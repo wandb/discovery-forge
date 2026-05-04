@@ -1,0 +1,179 @@
+"""Orchestrator: flow control, cost tracking, and Weave tracing setup."""
+
+import json
+from pathlib import Path
+
+import weave
+from agents import Runner, set_trace_processors
+from weave.integrations.openai_agents.openai_agents import WeaveTracingProcessor
+
+
+class BudgetExceededError(Exception):
+    """Raised when the cumulative API cost exceeds the configured limit."""
+
+    def __init__(self, spent: float, limit: float) -> None:
+        self.spent = spent
+        self.limit = limit
+        super().__init__(f"Budget exceeded: ${spent:.4f} spent, limit ${limit:.2f}")
+
+
+class CostBudget:
+    """Tracks cumulative USD cost and enforces a hard ceiling."""
+
+    def __init__(self, max_usd: float) -> None:
+        self._max = max_usd
+        self._total = 0.0
+
+    @property
+    def total_usd(self) -> float:
+        return self._total
+
+    def add(self, amount_usd: float) -> None:
+        self._total += amount_usd
+        self.check()
+
+    def check(self) -> None:
+        if self._total > self._max:
+            raise BudgetExceededError(spent=self._total, limit=self._max)
+
+
+def init_observability(week_id: str):
+    """Initialize W&B Weave tracing. Call exactly once per app lifecycle."""
+    client = weave.init("wandb-smle/autoresearch-researcher")
+    set_trace_processors([WeaveTracingProcessor()])
+    return client
+
+
+def update_metadata_costs(
+    metadata_path: Path,
+    total_cost_usd: float,
+    prompt_tokens: int,
+    completion_tokens: int,
+) -> None:
+    """Merge cost/token telemetry into the existing run_metadata.json."""
+    data: dict = {}
+    if metadata_path.exists():
+        data = json.loads(metadata_path.read_text())
+    data["total_cost_usd"] = total_cost_usd
+    data["prompt_tokens"] = prompt_tokens
+    data["completion_tokens"] = completion_tokens
+    metadata_path.write_text(json.dumps(data, indent=2))
+
+
+async def run_briefing(
+    week: str,
+    output_dir: Path,
+    max_tools: int,
+    max_cost_usd: float,
+    dry_run: bool,
+) -> None:
+    """
+    Full pipeline: Discovery → Profiling → Writing.
+
+    Respects max_cost_usd; preserves partial outputs on budget exceeded.
+    Weave tracing must be initialized before calling this (init_observability).
+    """
+    from autoresearch_researcher.agents.discovery import build_discovery_agent
+    from autoresearch_researcher.agents.profiler import build_profiler_agent
+    from autoresearch_researcher.agents.writer import build_writer_agent
+    from autoresearch_researcher.tools.persistence import load_candidates
+
+    budget = CostBudget(max_usd=max_cost_usd)
+    prompt_tokens = 0
+    completion_tokens = 0
+    total_cost = 0.0
+
+    candidates_file = output_dir / "_candidates.jsonl"
+
+    if dry_run:
+        # In dry-run mode, skip real LLM calls; create placeholder outputs
+        _write_dry_run_outputs(output_dir, week)
+        return
+
+    try:
+        # ── Stage 1: Discovery ────────────────────────────────────────────────
+        discovery_agent = build_discovery_agent(output_dir=output_dir, max_tools=max_tools)
+        discovery_prompt = (
+            f"Discover experiment-automation tools for the week of {week}. "
+            f"Find up to {max_tools} candidates and save them."
+        )
+        with weave.attributes({"week": week, "stage": "discovery"}):
+            disc_result = await Runner.run(discovery_agent, input=discovery_prompt, max_turns=20)
+
+        usage = _extract_usage(disc_result)
+        prompt_tokens += usage[0]
+        completion_tokens += usage[1]
+        total_cost += usage[2]
+        budget.add(usage[2])
+
+        # ── Stage 2: Profiling ────────────────────────────────────────────────
+        candidates = load_candidates(candidates_file)
+        profiler_agent = build_profiler_agent(output_dir=output_dir)
+
+        with weave.attributes({"week": week, "stage": "profiling"}):
+            for candidate in candidates:
+                budget.check()
+                profile_prompt = (
+                    f"Profile this tool candidate and determine if it is in scope:\n"
+                    f"Name: {candidate.name}\nURL: {candidate.url}\nDescription: {candidate.description}"
+                )
+                prof_result = await Runner.run(profiler_agent, input=profile_prompt, max_turns=15)
+                usage = _extract_usage(prof_result)
+                prompt_tokens += usage[0]
+                completion_tokens += usage[1]
+                total_cost += usage[2]
+                budget.add(usage[2])
+
+        # ── Stage 3: Writing ──────────────────────────────────────────────────
+        writer_agent = build_writer_agent(output_dir=output_dir, week=week)
+        write_prompt = (
+            f"Read all tool profiles in tools/ and generate the weekly briefing for {week}. "
+            "Call read_tool_profiles_tool first, then save_draft_tool and save_comparison_table_tool."
+        )
+        with weave.attributes({"week": week, "stage": "writing"}):
+            write_result = await Runner.run(writer_agent, input=write_prompt, max_turns=20)
+
+        usage = _extract_usage(write_result)
+        prompt_tokens += usage[0]
+        completion_tokens += usage[1]
+        total_cost += usage[2]
+
+    except BudgetExceededError:
+        # Partial outputs already on disk — do not clean up
+        raise
+
+    finally:
+        metadata_path = output_dir / "run_metadata.json"
+        if metadata_path.exists():
+            update_metadata_costs(metadata_path, total_cost, prompt_tokens, completion_tokens)
+
+
+def _extract_usage(result) -> tuple[int, int, float]:
+    """Extract (prompt_tokens, completion_tokens, cost_usd) from a Runner result."""
+    try:
+        usage = result.raw_responses[-1].usage
+        p = getattr(usage, "input_tokens", 0) or getattr(usage, "prompt_tokens", 0)
+        c = getattr(usage, "output_tokens", 0) or getattr(usage, "completion_tokens", 0)
+        # Rough cost estimate: $5/1M input, $15/1M output (gpt-4o pricing)
+        cost = (p * 5 + c * 15) / 1_000_000
+        return p, c, cost
+    except Exception:
+        return 0, 0, 0.0
+
+
+def _write_dry_run_outputs(output_dir: Path, week: str) -> None:
+    """Create placeholder output files for dry-run mode."""
+    tools_dir = output_dir / "tools"
+    tools_dir.mkdir(parents=True, exist_ok=True)
+
+    (output_dir / "_candidates.jsonl").write_text(
+        '{"name": "DryRun Tool", "url": "https://example.com", '
+        '"description": "Dry run placeholder", "category": "ml-experiment-automation"}\n'
+    )
+    (output_dir / "draft.md").write_text(
+        f"# Weekly Briefing: {week}\n\n*Dry run — no real LLM calls made.*\n"
+    )
+    (output_dir / "comparison_table.md").write_text(
+        "| Tool Name | License |\n|-----------|---------|"
+        "\n| DryRun Tool | unknown |\n"
+    )

@@ -154,15 +154,15 @@ Orchestrator (CLI entrypoint)
 - [x] 자동 검증: sources.jsonl의 모든 URL이 본문 어딘가에서 인용되는가 (orphan 출처 경고)
 
 ### US7: 비용·실행 가드레일 + 트레이싱
-- [ ] `--max-cost-usd 20` (기본값) 도달 시 graceful 종료
+- [x] `--max-cost-usd 20` (기본값) 도달 시 graceful 종료
   - 진행 중 단계까지의 산출물은 보존
-- [ ] **W&B Weave 트레이싱** 활성화
+- [x] **W&B Weave 트레이싱** 활성화
   - `weave.init(project="autoresearch-researcher")` 1회 호출
   - `set_trace_processors([WeaveTracingProcessor()])`로 OpenAI Agents 자동 캡처
   - 각 주차 실행을 Weave attribute로 태깅: `weave.attributes({"week": week_id})`
   - 모든 LLM 호출, function tool, 에이전트 핸드오프가 자동으로 트레이스 트리에 기록
-- [ ] 토큰/비용 누적 기록을 `run_metadata.json`에 (Weave는 별도 대시보드, 로컬 사본도 보관)
-- [ ] CLI 출력에 Weave 트레이스 URL 표시 (사후 검수 시 바로 클릭 가능)
+- [x] 토큰/비용 누적 기록을 `run_metadata.json`에 (Weave는 별도 대시보드, 로컬 사본도 보관)
+- [x] CLI 출력에 Weave 트레이스 URL 표시 (사후 검수 시 바로 클릭 가능)
 
 ### US8: Diff 인프라 (피드백 루프 시드)
 - [ ] CLI 서브커맨드: `autoresearch-researcher diff --week 2026-W19`

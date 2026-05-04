@@ -23,8 +23,15 @@ async def run_briefing(
     max_cost_usd: float,
     dry_run: bool,
 ) -> None:
-    """Placeholder orchestrator call — replaced by real orchestrator in US7."""
-    pass
+    """Delegate to orchestrator.run_briefing."""
+    from autoresearch_researcher.orchestrator import run_briefing as _run
+    await _run(
+        week=week,
+        output_dir=output_dir,
+        max_tools=max_tools,
+        max_cost_usd=max_cost_usd,
+        dry_run=dry_run,
+    )
 
 
 @app.command()
@@ -56,6 +63,15 @@ def run(
     metadata_path = week_dir / "run_metadata.json"
     metadata_path.write_text(json.dumps(metadata, indent=2))
 
+    if not dry_run:
+        try:
+            from autoresearch_researcher.orchestrator import init_observability
+            weave_client = init_observability(week_id=week)
+            if weave_client is not None:
+                typer.echo(f"Weave tracing: {getattr(weave_client, 'url', '(see W&B dashboard)')}")
+        except Exception as e:
+            typer.echo(f"Warning: Weave init failed ({e}). Continuing without tracing.", err=True)
+
     t_start = datetime.now(timezone.utc)
     try:
         asyncio.run(
@@ -67,6 +83,9 @@ def run(
                 dry_run=dry_run,
             )
         )
+    except Exception as e:
+        typer.echo(f"Run aborted: {e}", err=True)
+        raise typer.Exit(code=2)
     finally:
         t_end = datetime.now(timezone.utc)
         metadata["finished_at"] = t_end.isoformat()
