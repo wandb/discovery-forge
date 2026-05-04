@@ -8,6 +8,9 @@ from pathlib import Path
 from typing import Optional
 
 import typer
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = typer.Typer(name="autoresearch-researcher", help="Weekly tool briefing agent for experiment automation research.")
 
@@ -93,9 +96,11 @@ def run(
         raise typer.Exit(code=2)
     finally:
         t_end = datetime.now(timezone.utc)
-        metadata["finished_at"] = t_end.isoformat()
-        metadata["elapsed_seconds"] = round((t_end - t_start).total_seconds(), 2)
-        metadata_path.write_text(json.dumps(metadata, indent=2))
+        # Merge finished_at into existing metadata (orchestrator may have written cost info)
+        existing = json.loads(metadata_path.read_text()) if metadata_path.exists() else {}
+        existing["finished_at"] = t_end.isoformat()
+        existing["elapsed_seconds"] = round((t_end - t_start).total_seconds(), 2)
+        metadata_path.write_text(json.dumps(existing, indent=2))
         typer.echo(f"Run complete. Output: {week_dir}")
 
 

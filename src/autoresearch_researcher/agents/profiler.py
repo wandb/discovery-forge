@@ -120,9 +120,15 @@ def build_profiler_agent(output_dir: Path) -> Agent:
         save_tool_profile(profile, tools_dir)
         return f"Saved profile: {slug}"
 
+    rejected_file = output_dir / "_rejected_profiles.jsonl"
+
     @function_tool
     def save_rejected_profile_tool(slug: str, name: str, rejection_reason: str) -> str:
         """Reject a tool that does not meet the experiment-automation scope."""
+        import json
+        rejected_file.parent.mkdir(parents=True, exist_ok=True)
+        with rejected_file.open("a") as f:
+            f.write(json.dumps({"slug": slug, "name": name, "rejection_reason": rejection_reason}) + "\n")
         return f"Rejected: {name} — {rejection_reason}"
 
     @function_tool
