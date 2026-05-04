@@ -114,10 +114,10 @@ Orchestrator (CLI entrypoint)
 - [x] `tests/` 폴더와 `conftest.py` 셋업
 
 ### US2: CLI 엔트리포인트
-- [ ] `autoresearch-researcher run --week 2026-W19 [--max-tools 12] [--max-cost-usd 20] [--dry-run]`
-- [ ] `weekly_runs/{week}/` 폴더 자동 생성 (이미 존재 시 `--rerun` 없으면 abort)
-- [ ] `run_metadata.json` 시작 시점 기록
-- [ ] 종료 시 토큰/비용/소요시간 누적 기록
+- [x] `autoresearch-researcher run --week 2026-W19 [--max-tools 12] [--max-cost-usd 20] [--dry-run]`
+- [x] `weekly_runs/{week}/` 폴더 자동 생성 (이미 존재 시 `--rerun` 없으면 abort)
+- [x] `run_metadata.json` 시작 시점 기록
+- [x] 종료 시 토큰/비용/소요시간 누적 기록
 
 ### US3: DiscoveryAgent
 - [ ] 스코프 정의를 `instructions/discovery.md`에 분리 저장
