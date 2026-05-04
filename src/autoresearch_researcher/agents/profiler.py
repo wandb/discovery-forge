@@ -2,12 +2,13 @@
 
 from pathlib import Path
 
-from agents import Agent, WebSearchTool, function_tool
+from agents import Agent, function_tool
 
 from autoresearch_researcher.agents.discovery import load_instructions
 from autoresearch_researcher.schemas.tool_profile import RejectedProfile, ToolProfile
 from autoresearch_researcher.tools.github import fetch_github_metadata
 from autoresearch_researcher.tools.persistence import save_tool_profile
+from autoresearch_researcher.tools.search import perplexity_search
 
 # Keywords that indicate a tool only searches/summarizes (not experiment automation)
 _DEEP_RESEARCH_KEYWORDS = [
@@ -138,17 +139,22 @@ def build_profiler_agent(output_dir: Path) -> Agent:
         # Full source tracking implemented in US6; return stub ID for now
         return "0"
 
+    @function_tool
+    def search_web(query: str) -> str:
+        """Search the web using Perplexity AI. Returns a summary with source URLs."""
+        return perplexity_search(query)
+
     instructions = load_instructions("profiler")
 
     return Agent(
         name="ProfilerAgent",
         instructions=instructions,
         tools=[
-            WebSearchTool(),
+            search_web,
             save_tool_profile_tool,
             save_rejected_profile_tool,
             fetch_github_metadata_tool,
             save_source_tool,
         ],
-        model="gpt-4o",
+        model="gpt-4.1",
     )
