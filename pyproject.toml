@@ -1,0 +1,42 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "autoresearch-researcher"
+version = "0.1.0"
+description = "Weekly tool briefing agent for experiment automation research"
+requires-python = ">=3.11"
+dependencies = [
+    "openai-agents>=0.0.19",
+    "weave>=0.51.0",
+    "python-dotenv>=1.0.0",
+    "typer>=0.12.0",
+    "pydantic>=2.0.0",
+    "httpx>=0.27.0",
+]
+
+[project.scripts]
+autoresearch-researcher = "autoresearch_researcher.cli:app"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+markers = [
+    "expensive: marks tests as expensive (real API calls, deselect with '-m not expensive')",
+]
+testpaths = ["tests"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/autoresearch_researcher"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+]

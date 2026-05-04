@@ -1,0 +1,12 @@
+.env
+weekly_runs/
+__pycache__/
+.venv/
+wandb/
+*.pyc
+*.pyo
+.pytest_cache/
+.ruff_cache/
+dist/
+*.egg-info/
+.DS_Store
