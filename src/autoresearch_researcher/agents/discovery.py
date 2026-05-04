@@ -70,5 +70,5 @@ def build_discovery_agent(output_dir: Path, max_tools: int = 12) -> Agent:
             save_candidate_tool,
             save_rejected_candidate_tool,
         ],
-        model="gpt-4.1",
+        model="gpt-5.4-mini",
     )

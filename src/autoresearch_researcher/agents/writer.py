@@ -130,5 +130,5 @@ def build_writer_agent(output_dir: Path, week: str) -> "Agent":
             read_tool_profiles_tool,
             get_tool_body_tool,
         ],
-        model="gpt-4o",
+        model="gpt-5.4-mini",
     )

@@ -156,5 +156,5 @@ def build_profiler_agent(output_dir: Path) -> Agent:
             fetch_github_metadata_tool,
             save_source_tool,
         ],
-        model="gpt-4.1",
+        model="gpt-5.4-mini",
     )
