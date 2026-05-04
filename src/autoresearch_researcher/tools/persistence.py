@@ -61,6 +61,18 @@ def save_tool_profile(profile: ToolProfile, tools_dir: Path) -> None:
     out_file.write_text(content)
 
 
+def save_draft(content: str, output_dir: Path) -> None:
+    """Save draft.md to the week output directory."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    (output_dir / "draft.md").write_text(content)
+
+
+def save_comparison_table(content: str, output_dir: Path) -> None:
+    """Save comparison_table.md to the week output directory."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    (output_dir / "comparison_table.md").write_text(content)
+
+
 def load_candidates(candidates_file: Path) -> list[Candidate]:
     """Load all accepted candidates from a JSONL file."""
     if not candidates_file.exists():
