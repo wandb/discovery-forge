@@ -40,3 +40,13 @@
 {"id": "S40", "q_id": "Q4", "title": "Influence of Topic Familiarity and Prompt Specificity on Citation Fabrication (PMC)", "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC12658395/", "type": "primary", "date": "2025"}
 {"id": "S41", "q_id": "Q4", "title": "Is AI leading to a reproducibility crisis in science? (Nature)", "url": "https://www.nature.com/articles/d41586-023-03817-6", "type": "secondary", "date": "2023-11"}
 {"id": "S42", "q_id": "Q4", "title": "Agentic AI for Scientific Discovery: A Survey (arXiv 2503.08979)", "url": "https://arxiv.org/html/2503.08979v1", "type": "primary", "date": "2025-03"}
+{"id": "S43", "q_id": "Q5", "title": "ChatGPT Plans and Pricing", "url": "https://chatgpt.com/pricing/", "type": "primary", "date": "2025"}
+{"id": "S44", "q_id": "Q5", "title": "OpenAI Deep Research Goes Enterprise", "url": "https://agentmarketcap.ai/blog/2026/04/08/openai-deep-research-enterprise-autonomous-research-agent", "type": "secondary", "date": "2026-04"}
+{"id": "S45", "q_id": "Q5", "title": "Google Deep Research Max Scores 93%", "url": "https://www.davidborish.com/post/google-s-new-deep-research-max-agent-scores-93-on-benchmarks", "type": "secondary", "date": "2025"}
+{"id": "S46", "q_id": "Q5", "title": "Deep Research Tools Compared: OpenAI vs Perplexity vs Gemini vs Claude (Glasp)", "url": "https://glasp.co/articles/deep-research-tools-compared", "type": "secondary", "date": "2026"}
+{"id": "S47", "q_id": "Q5", "title": "GPT Researcher - Autonomous AI Research Agent", "url": "https://gptr.dev/", "type": "primary", "date": "2025"}
+{"id": "S48", "q_id": "Q5", "title": "GitHub langchain-ai/open_deep_research", "url": "https://github.com/langchain-ai/open_deep_research", "type": "primary", "date": "2025"}
+{"id": "S49", "q_id": "Q5", "title": "Top 5 Open-Source Alternatives for OpenAI's Deep Research (Simular AI)", "url": "https://www.simular.ai/blogs/top-5-open-source-alternatives-for-openais-deep-research", "type": "secondary", "date": "2025"}
+{"id": "S50", "q_id": "Q5", "title": "GitHub SakanaAI/AI-Scientist-v2", "url": "https://github.com/SakanaAI/AI-Scientist-v2", "type": "primary", "date": "2025"}
+{"id": "S51", "q_id": "Q5", "title": "GitHub SamuelSchmidgall/AgentLaboratory", "url": "https://github.com/SamuelSchmidgall/AgentLaboratory", "type": "primary", "date": "2025"}
+{"id": "S52", "q_id": "Q5", "title": "AI Deep Research Comparison (AI Multiple)", "url": "https://aimultiple.com/ai-deep-research", "type": "secondary", "date": "2026"}

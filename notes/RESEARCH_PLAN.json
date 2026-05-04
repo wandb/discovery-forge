@@ -5,7 +5,7 @@
       {"id": "Q2", "q": "주요 시스템·프레임워크 (2024-2026, 학계+산업)", "status": "done", "min_sources": 5},
       {"id": "Q3", "q": "평가 벤치마크와 성능 한계", "status": "done", "min_sources": 3},
       {"id": "Q4", "q": "실패 모드, 환각, 재현성 이슈", "status": "done", "min_sources": 4},
-      {"id": "Q5", "q": "상용 서비스 vs 오픈소스 구현 비교", "status": "pending", "min_sources": 3},
+      {"id": "Q5", "q": "상용 서비스 vs 오픈소스 구현 비교", "status": "done", "min_sources": 3},
       {"id": "SYNTH", "q": "전체 종합 리포트 (notes/00_synthesis.md)", "status": "pending", "depends_on": ["Q1","Q2","Q3","Q4","Q5"]}
     ]
   }
