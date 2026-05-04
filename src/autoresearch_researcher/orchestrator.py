@@ -1,6 +1,8 @@
 """Orchestrator: flow control, cost tracking, and Weave tracing setup."""
 
 import json
+import re
+import shutil
 from pathlib import Path
 
 import weave
@@ -58,6 +60,48 @@ def update_metadata_costs(
     data["prompt_tokens"] = prompt_tokens
     data["completion_tokens"] = completion_tokens
     metadata_path.write_text(json.dumps(data, indent=2))
+
+
+def name_to_slug(name: str) -> str:
+    """Convert a tool name to a filesystem-safe slug."""
+    slug = name.strip().lower()
+    slug = re.sub(r"[^a-z0-9]+", "-", slug)
+    return slug.strip("-")
+
+
+def backup_week_dir(week_dir: Path) -> Path:
+    """
+    Rename week_dir to a numbered backup and return the backup path.
+    Leaves week_dir non-existent so a fresh run can recreate it.
+    """
+    parent = week_dir.parent
+    base = week_dir.name
+    n = 1
+    while True:
+        backup = parent / f"{base}_backup_{n}"
+        if not backup.exists():
+            shutil.move(str(week_dir), str(backup))
+            return backup
+        n += 1
+
+
+def should_skip_discovery(output_dir: Path) -> bool:
+    """Return True if a non-empty _candidates.jsonl already exists."""
+    candidates_file = output_dir / "_candidates.jsonl"
+    if not candidates_file.exists():
+        return False
+    content = candidates_file.read_text().strip()
+    return bool(content)
+
+
+def get_unprofiled_candidates(output_dir: Path) -> list:
+    """Return candidates that have not yet been profiled (no tools/{slug}.md)."""
+    from autoresearch_researcher.tools.persistence import load_candidates
+    candidates_file = output_dir / "_candidates.jsonl"
+    tools_dir = output_dir / "tools"
+    candidates = load_candidates(candidates_file)
+    profiled_slugs = {f.stem for f in tools_dir.glob("*.md")} if tools_dir.exists() else set()
+    return [c for c in candidates if name_to_slug(c.name) not in profiled_slugs]
 
 
 async def run_briefing(

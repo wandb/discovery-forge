@@ -50,6 +50,11 @@ def run(
         typer.echo(f"ERROR: {week_dir} already exists. Use --rerun to overwrite.", err=True)
         raise typer.Exit(code=1)
 
+    if week_dir.exists() and rerun:
+        from autoresearch_researcher.orchestrator import backup_week_dir
+        backup = backup_week_dir(week_dir)
+        typer.echo(f"Previous run backed up to: {backup}")
+
     week_dir.mkdir(parents=True, exist_ok=True)
 
     started_at = datetime.now(timezone.utc).isoformat()

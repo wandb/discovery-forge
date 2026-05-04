@@ -172,8 +172,8 @@ Orchestrator (CLI entrypoint)
 - [x] `feedback.md` 템플릿 자동 생성 (사람이 채워넣을 양식, 아래 참조)
 
 ### US9: 재실행 안전성
-- [ ] `--rerun` 플래그로 같은 주차 재실행 허용 (이전 폴더 백업)
-- [ ] 부분 실패 시 `_candidates.jsonl` 활용해 ProfilerAgent부터 재개
+- [x] `--rerun` 플래그로 같은 주차 재실행 허용 (이전 폴더 백업)
+- [x] 부분 실패 시 `_candidates.jsonl` 활용해 ProfilerAgent부터 재개
 
 ## feedback.md 템플릿 (US8에서 자동 생성)
 
