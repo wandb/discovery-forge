@@ -207,10 +207,10 @@ Orchestrator (CLI entrypoint)
 ## 검증 (smoke test 수준)
 
 빌드 통과 기준:
-- [ ] `uv run pytest tests/` 전체 통과
-- [ ] 단위 테스트: 각 에이전트 (LLM 모킹)
-- [ ] e2e 테스트 1개: `--max-tools 3 --max-cost-usd 2` dry-run, 비용 < $2
-- [ ] e2e 산출물 검증:
+- [x] `uv run pytest tests/` 전체 통과
+- [x] 단위 테스트: 각 에이전트 (LLM 모킹)
+- [x] e2e 테스트 1개: `--max-tools 3 --max-cost-usd 2` dry-run, 비용 < $2
+- [x] e2e 산출물 검증:
   - tools/ 폴더에 도구 3개 이상 (스코프 IN인 것만)
   - comparison_table.md 모든 컬럼 채워짐 (unknown OK)
   - 인용 무결성 통과

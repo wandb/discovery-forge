@@ -302,3 +302,4 @@ def verify_citations(report: str, sources: list[Source]) -> list[str]:
 - US7: `CostBudget.add()`는 내부적으로 `check()`를 호출해 즉시 raise함 — 테스트에서 "이미 초과된 상태"를 만들려면 `budget._total`을 직접 설정한 뒤 `check()`를 별도 호출해야 함. add로 over 상태를 만들려 하면 test setup 단계에서 raise됨.
 - US8: `difflib.unified_diff`의 출력 라인은 `\n`으로 끝나므로 classify 시 `line.rstrip()` 후 패턴 매칭 필요 — 그렇지 않으면 정규식 앵커(`^`)가 줄 끝 공백과 충돌해 오탐 발생 가능.
 - US9: `shutil.move(str(src), str(dst))`에서 경로를 `str()`로 변환해야 함 — Python 3.11 이하에서 `Path` 객체 직접 전달 시 타입 오류 가능, `str()` 래핑이 안전.
+- Smoke e2e: dry-run 모드에서 `sources.jsonl`과 `draft.md`의 `[^N]` 인용이 완전히 일치해야 verify_citations가 통과함 — 각 tool profile의 source_ids와 draft footnote 번호를 생성 시 1:1 매핑으로 관리해야 orphan 경고 없음.

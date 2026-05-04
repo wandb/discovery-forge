@@ -205,19 +205,103 @@ def _extract_usage(result) -> tuple[int, int, float]:
         return 0, 0, 0.0
 
 
+_DRY_RUN_TOOL_COUNT = 3
+
+_DRY_RUN_CATEGORIES = [
+    "ml-experiment-automation",
+    "end-to-end-paper-generation",
+    "hypothesis-generation",
+]
+
+_DRY_RUN_DESCRIPTIONS = [
+    "Autonomously runs ML training experiments in a loop and generates a paper from results.",
+    "Proposes scientific hypotheses, designs experiments, and produces full research reports.",
+    "Executes chemistry synthesis experiments and writes lab reports with citations.",
+]
+
+
 def _write_dry_run_outputs(output_dir: Path, week: str) -> None:
-    """Create placeholder output files for dry-run mode."""
+    """
+    Create synthetic placeholder output files for dry-run mode.
+    Generates exactly _DRY_RUN_TOOL_COUNT in-scope experiment-automation tool profiles.
+    """
+    import yaml
+
     tools_dir = output_dir / "tools"
     tools_dir.mkdir(parents=True, exist_ok=True)
+    sources_file = output_dir / "sources.jsonl"
+    candidates_lines = []
 
-    (output_dir / "_candidates.jsonl").write_text(
-        '{"name": "DryRun Tool", "url": "https://example.com", '
-        '"description": "Dry run placeholder", "category": "ml-experiment-automation"}\n'
-    )
-    (output_dir / "draft.md").write_text(
-        f"# Weekly Briefing: {week}\n\n*Dry run — no real LLM calls made.*\n"
-    )
-    (output_dir / "comparison_table.md").write_text(
-        "| Tool Name | License |\n|-----------|---------|"
-        "\n| DryRun Tool | unknown |\n"
-    )
+    for i in range(_DRY_RUN_TOOL_COUNT):
+        slug = f"synthetic-exp-tool-{i}"
+        name = f"Synthetic Experiment Tool {i}"
+        category = _DRY_RUN_CATEGORIES[i % len(_DRY_RUN_CATEGORIES)]
+        description = _DRY_RUN_DESCRIPTIONS[i % len(_DRY_RUN_DESCRIPTIONS)]
+
+        candidates_lines.append(json.dumps({
+            "name": name, "url": f"https://example-{i}.com",
+            "description": description, "category": category,
+        }))
+
+        front = {
+            "slug": slug, "name": name, "license": "MIT",
+            "domains": [category.split("-")[0]],
+            "autonomy_level": "Scientist",
+            "autonomy_rationale": "Executes full experiment loop autonomously",
+            "interface": "Python lib",
+            "resource_requirements": "Single GPU",
+            "last_commit": "2025-01-01", "stars": 300 + i * 100,
+            "open_issues": 10, "pricing_note": "Free",
+            "github_url": f"https://github.com/example/tool-{i}",
+            "paper_url": None, "project_url": None,
+            "source_ids": [i + 1],
+        }
+        body = (
+            f"# {name}\n\n"
+            f"**Autonomy level**: Scientist — Executes full experiment loop autonomously\n\n"
+            f"## Known Limitations\n- Dry run synthetic entry [^{i+1}]\n"
+        )
+        profile_md = "---\n" + yaml.dump(front, allow_unicode=True, sort_keys=False) + "---\n\n" + body
+        (tools_dir / f"{slug}.md").write_text(profile_md)
+
+        from datetime import datetime, timezone
+        source = json.dumps({
+            "id": i + 1,
+            "url": f"https://example-{i}.com",
+            "title": f"Example Source {i}",
+            "fetched_at": datetime.now(timezone.utc).isoformat(),
+            "used_in": [slug],
+        })
+        with sources_file.open("a") as f:
+            f.write(source + "\n")
+
+    (output_dir / "_candidates.jsonl").write_text("\n".join(candidates_lines) + "\n")
+
+    # Build comparison table from synthetic profiles
+    from autoresearch_researcher.agents.writer import load_tool_profiles_from_dir, generate_comparison_table
+    profiles = load_tool_profiles_from_dir(tools_dir)
+    table = generate_comparison_table(profiles)
+    (output_dir / "comparison_table.md").write_text(table)
+
+    # Build draft with all citations
+    draft_lines = [
+        f"# Weekly Briefing: Experiment-Automation Tools",
+        f"**Week**: {week}",
+        f"**Published**: (dry run)",
+        f"**Tools covered**: {_DRY_RUN_TOOL_COUNT}",
+        f"**Sources**: {_DRY_RUN_TOOL_COUNT}",
+        "",
+        "## This Week's Highlights",
+        "",
+        "First issue — baseline established.",
+        "",
+    ]
+    for i in range(_DRY_RUN_TOOL_COUNT):
+        slug = f"synthetic-exp-tool-{i}"
+        draft_lines += [f"## Synthetic Experiment Tool {i}", "", f"Dry run entry. [^{i+1}]", ""]
+
+    draft_lines += ["## References", ""]
+    for i in range(_DRY_RUN_TOOL_COUNT):
+        draft_lines.append(f"[^{i+1}]: https://example-{i}.com")
+
+    (output_dir / "draft.md").write_text("\n".join(draft_lines) + "\n")
