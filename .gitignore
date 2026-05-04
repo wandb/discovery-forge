@@ -1,5 +1,4 @@
 .env
-weekly_runs/
 __pycache__/
 .venv/
 wandb/
