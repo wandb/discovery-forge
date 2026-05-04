@@ -127,7 +127,7 @@ Orchestrator (CLI entrypoint)
 - [x] 명백한 OUT 카테고리(딥 리서치 제품 등)는 발견 즉시 제외하고 reason 기록
 
 ### US4: ProfilerAgent
-- [ ] 각 후보에 대해 다음 수집:
+- [x] 각 후보에 대해 다음 수집:
   - 공식 페이지 / 논문 / GitHub URL
   - 라이선스 (LICENSE 파일 또는 페이지에서 추출)
   - GitHub 활성도 (마지막 커밋, stars, open issues) — `fetch_github_metadata` 도구
@@ -135,9 +135,9 @@ Orchestrator (CLI entrypoint)
   - 자율성 수준 (자체 정의 + 근거)
   - 인터페이스 / 리소스 요구사항
   - 알려진 한계 (1차 출처 우선)
-- [ ] **자체 스코프 필터**: 수집 후 "실험 자동화 정의에 맞는가" 자기 검증, 불일치 시 reject
-- [ ] 결과는 `tools/{slug}.md` (YAML front-matter + 본문)
-- [ ] 모든 사실 주장에 출처 (sources.jsonl 등록)
+- [x] **자체 스코프 필터**: 수집 후 "실험 자동화 정의에 맞는가" 자기 검증, 불일치 시 reject
+- [x] 결과는 `tools/{slug}.md` (YAML front-matter + 본문)
+- [x] 모든 사실 주장에 출처 (sources.jsonl 등록)
 
 ### US5: WriterAgent
 - [ ] 모든 `tools/*.md`를 읽고 통합
