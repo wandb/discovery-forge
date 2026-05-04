@@ -298,3 +298,4 @@ def verify_citations(report: str, sources: list[Source]) -> list[str]:
 - US3: `@function_tool`로 정의된 도구는 Agent 생성자 내부 클로저에서 `output_dir`를 캡처해야 함 — 외부에서 파일 경로를 인자로 받으면 Agent가 경로를 모르므로, `build_*_agent(output_dir)` 패턴으로 클로저 바인딩 필수.
 - US4: `is_experiment_automation()` 같은 순수 헬퍼 함수를 에이전트 모듈에 분리하면 LLM 모킹 없이 스코프 필터 로직을 단위 테스트할 수 있음 — LLM 판단과 규칙 기반 필터를 레이어로 분리하는 것이 테스트 가능성의 핵심.
 - US5: WriterAgent의 `read_tool_profiles_tool`은 `_body` 키를 제거하고 JSON 직렬화해야 context window를 낭비하지 않음 — 전체 본문이 필요할 때는 `get_tool_body_tool(slug)`를 별도 호출하는 패턴이 토큰 효율적.
+- US6: `SourceRegistry`에서 같은 URL 재등록 시 `used_in`을 업데이트하고 파일 전체 재작성 필요 — append-only JSONL은 중복 ID 생성 위험이 있어 dedup은 in-memory dict + 재작성이 안전.

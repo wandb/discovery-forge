@@ -6,6 +6,7 @@ from pathlib import Path
 import yaml
 
 from autoresearch_researcher.schemas.candidate import Candidate, RejectedCandidate
+from autoresearch_researcher.schemas.sources import Source
 from autoresearch_researcher.schemas.tool_profile import ToolProfile
 
 
@@ -83,3 +84,22 @@ def load_candidates(candidates_file: Path) -> list[Candidate]:
         if line:
             candidates.append(Candidate(**json.loads(line)))
     return candidates
+
+
+def save_source(source: Source, sources_file: Path) -> None:
+    """Append a source entry to sources.jsonl."""
+    sources_file.parent.mkdir(parents=True, exist_ok=True)
+    with sources_file.open("a") as f:
+        f.write(source.model_dump_json() + "\n")
+
+
+def load_sources(sources_file: Path) -> list[Source]:
+    """Load all sources from sources.jsonl."""
+    if not sources_file.exists():
+        return []
+    sources = []
+    for line in sources_file.read_text().splitlines():
+        line = line.strip()
+        if line:
+            sources.append(Source(**json.loads(line)))
+    return sources

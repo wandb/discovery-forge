@@ -148,10 +148,10 @@ Orchestrator (CLI entrypoint)
 - [x] 톤: 정보 제공 위주, 마케팅 언어 금지
 
 ### US6: 출처 무결성
-- [ ] 모든 인용은 sources.jsonl 등록된 URL만 사용
-- [ ] sources.jsonl 항목: `id, url, title, fetched_at, used_in (도구 slug 목록)`
-- [ ] 자동 검증: `[^N]` 참조가 모두 sources.jsonl에 존재하는가
-- [ ] 자동 검증: sources.jsonl의 모든 URL이 본문 어딘가에서 인용되는가 (orphan 출처 경고)
+- [x] 모든 인용은 sources.jsonl 등록된 URL만 사용
+- [x] sources.jsonl 항목: `id, url, title, fetched_at, used_in (도구 slug 목록)`
+- [x] 자동 검증: `[^N]` 참조가 모두 sources.jsonl에 존재하는가
+- [x] 자동 검증: sources.jsonl의 모든 URL이 본문 어딘가에서 인용되는가 (orphan 출처 경고)
 
 ### US7: 비용·실행 가드레일 + 트레이싱
 - [ ] `--max-cost-usd 20` (기본값) 도달 시 graceful 종료
