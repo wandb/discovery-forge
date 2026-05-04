@@ -20,3 +20,12 @@
 {"id": "S20", "q_id": "Q2", "title": "Sakana claims its AI-generated paper passed peer review — nuanced", "url": "https://techcrunch.com/2025/03/12/sakana-claims-its-ai-paper-passed-peer-review-but-its-a-bit-more-nuanced-than-that/", "type": "secondary", "date": "2025-03"}
 {"id": "S21", "q_id": "Q2", "title": "Agentic AI for Scientific Discovery: A Survey (arXiv 2503.08979)", "url": "https://arxiv.org/html/2503.08979v1", "type": "primary", "date": "2025-03"}
 {"id": "S22", "q_id": "Q2", "title": "7 Agentic AI Trends to Watch in 2026", "url": "https://machinelearningmastery.com/7-agentic-ai-trends-to-watch-in-2026/", "type": "secondary", "date": "2026"}
+{"id": "S23", "q_id": "Q3", "title": "ScienceAgentBench: Toward Rigorous Assessment of Language Agents (arXiv 2410.05080)", "url": "https://arxiv.org/abs/2410.05080", "type": "primary", "date": "2024-10"}
+{"id": "S24", "q_id": "Q3", "title": "MLR-Bench: Evaluating AI Agents on Open-Ended ML Research (arXiv 2505.19955)", "url": "https://arxiv.org/abs/2505.19955", "type": "primary", "date": "2025-05"}
+{"id": "S25", "q_id": "Q3", "title": "AI Research Agents for ML in MLE-bench (OpenReview)", "url": "https://openreview.net/forum?id=RwfrdKSgCE", "type": "primary", "date": "2025"}
+{"id": "S26", "q_id": "Q3", "title": "BrowseComp: a benchmark for browsing agents (OpenAI)", "url": "https://openai.com/index/browsecomp/", "type": "primary", "date": "2025-05"}
+{"id": "S27", "q_id": "Q3", "title": "DeepSearchQA: Bridging the Comprehensiveness Gap (arXiv 2601.20975)", "url": "https://arxiv.org/html/2601.20975v1", "type": "primary", "date": "2026-01"}
+{"id": "S28", "q_id": "Q3", "title": "BrowseComp-Plus: A More Fair and Transparent Evaluation Benchmark (arXiv 2508.06600)", "url": "https://arxiv.org/abs/2508.06600", "type": "primary", "date": "2025-08"}
+{"id": "S29", "q_id": "Q3", "title": "DeepResearch Bench: A Comprehensive Benchmark for Deep Research Agents", "url": "https://deepresearch-bench.github.io/", "type": "primary", "date": "2025"}
+{"id": "S30", "q_id": "Q3", "title": "Humanity's Last Exam (arXiv 2501.14249)", "url": "https://arxiv.org/abs/2501.14249", "type": "primary", "date": "2025-01"}
+{"id": "S31", "q_id": "Q3", "title": "Humanity's Last Exam: The Super-Benchmark AI Is Currently Failing", "url": "https://neurosciencenews.com/humanity-last-exam-ai-benchmark-30191/", "type": "secondary", "date": "2025"}
