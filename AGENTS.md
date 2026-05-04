@@ -295,3 +295,4 @@ def verify_citations(report: str, sources: list[Source]) -> list[str]:
 <!-- 여기 아래로 빈 칸. Ralph가 채움. -->
 - US1: uv sync 후 VIRTUAL_ENV 환경변수가 다른 venv를 가리키면 경고 발생 — `uv run`은 정상 동작하지만, `.venv` 활성화 전에 다른 venv가 VIRTUAL_ENV에 설정된 상태이면 경고 출력됨 (무시 가능).
 - US2: Typer CLI에서 `asyncio.run()`으로 async orchestrator 호출 시 테스트에서 `AsyncMock` patch 위치는 `autoresearch_researcher.cli.run_briefing`으로 지정해야 함 — 모듈 경로가 틀리면 mock이 적용 안 됨.
+- US3: `@function_tool`로 정의된 도구는 Agent 생성자 내부 클로저에서 `output_dir`를 캡처해야 함 — 외부에서 파일 경로를 인자로 받으면 Agent가 경로를 모르므로, `build_*_agent(output_dir)` 패턴으로 클로저 바인딩 필수.

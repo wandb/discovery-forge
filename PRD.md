@@ -120,11 +120,11 @@ Orchestrator (CLI entrypoint)
 - [x] 종료 시 토큰/비용/소요시간 누적 기록
 
 ### US3: DiscoveryAgent
-- [ ] 스코프 정의를 `instructions/discovery.md`에 분리 저장
-- [ ] WebSearchTool로 카테고리별 검색 자동 수행
-- [ ] **검색어는 카테고리·일반 용어만**, 구체적 도구명 시드 금지
-- [ ] 후보 N개를 `_candidates.jsonl`로 저장 (이름, URL, 1줄 설명, 발견 카테고리)
-- [ ] 명백한 OUT 카테고리(딥 리서치 제품 등)는 발견 즉시 제외하고 reason 기록
+- [x] 스코프 정의를 `instructions/discovery.md`에 분리 저장
+- [x] WebSearchTool로 카테고리별 검색 자동 수행
+- [x] **검색어는 카테고리·일반 용어만**, 구체적 도구명 시드 금지
+- [x] 후보 N개를 `_candidates.jsonl`로 저장 (이름, URL, 1줄 설명, 발견 카테고리)
+- [x] 명백한 OUT 카테고리(딥 리서치 제품 등)는 발견 즉시 제외하고 reason 기록
 
 ### US4: ProfilerAgent
 - [ ] 각 후보에 대해 다음 수집:
