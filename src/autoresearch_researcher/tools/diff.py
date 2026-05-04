@@ -99,26 +99,26 @@ def generate_feedback_template(week: str) -> str:
     """Generate the feedback.md template for a given week."""
     return f"""# Week {week} Feedback
 
-## 발행 결정: ✅ as-is / ⚠️ minor edits / 🔴 major rewrite / ❌ reject
+## Publish decision: ✅ as-is / ⚠️ minor edits / 🔴 major rewrite / ❌ reject
 
-## 정량 점수 (1-5)
-- 정확성:
-- 완전성 (누락 도구 없는가):
-- 표 가독성:
-- 균형성 (낙관/비관 출처):
-- 최신성:
+## Quantitative scores (1-5)
+- Accuracy:
+- Completeness (any missing tools?):
+- Table readability:
+- Balance (optimistic vs critical sources):
+- Recency:
 
-## 수정 사항 (구조화)
+## Edits (structured)
 - [ADD]
 - [FIX]
 - [REMOVE]
 - [REWORD]
 - [BALANCE]
 
-## 시스템 개선 제안
+## System improvement suggestions
 - DiscoveryAgent:
 - ProfilerAgent:
 - WriterAgent:
 
-## 패턴 메모 (3주 이상 반복되는 이슈만)
+## Recurring patterns (only issues seen 3+ weeks in a row)
 """

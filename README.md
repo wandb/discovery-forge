@@ -1,148 +1,236 @@
 # autoresearch-researcher
 
-주 1회 실행되어 **실험 자동화(experiment automation) 계열 자율 연구 도구**를 조사하고, 공개 가능한 비교 가이드(Markdown)를 생성하는 멀티에이전트 시스템.
+A multi-agent system that runs once a week to survey **autonomous research tools in the experiment-automation space** and produce a publishable comparison guide (Markdown). Tools are accumulated into a global registry, so each new run only profiles tools you haven't seen before — and emits a "this week's changes" report.
 
-## 개요
+---
 
-3개의 에이전트가 순차적으로 동작합니다.
+## Overview
+
+Three agents run sequentially.
 
 ```
 Orchestrator (CLI)
-  ├─ DiscoveryAgent   — 웹 검색으로 후보 도구 발굴 (_candidates.jsonl)
-  ├─ ProfilerAgent    — 도구별 메타데이터 수집 + 스코프 필터 (tools/{slug}.md)
-  └─ WriterAgent      — 비교표 + 발행 초안 생성 (draft.md, comparison_table.md)
+  ├─ DiscoveryAgent   — Perplexity-backed search to surface candidate tools     (_candidates.jsonl)
+  ├─ ProfilerAgent    — per-tool deep dive + scope filter                        (_registry/profiles/{slug}.md)
+  └─ WriterAgent      — comparison table + publishable draft + highlights        (draft.md, comparison_table.md)
 ```
 
-**스코프**: "가설 → 실험 → 결과 → 글쓰기" 사이클을 자동화하는 시스템만 포함합니다. 딥 리서치(웹 검색·요약만 하는) 도구는 자동 제외됩니다.
+**Scope**: only tools that automate the "hypothesis → experiment → result → write" cycle. Deep-research tools (web-search + summarization only) are auto-rejected by the ProfilerAgent's scope filter.
 
-## 설치
+---
 
-Python 3.11+, [uv](https://docs.astral.sh/uv/) 필요.
+## Agent Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    autoresearch-researcher                       │
+│                                                                  │
+│   CLI: autoresearch-researcher run --week 2026-W19               │
+└─────────────────────────┬───────────────────────────────────────┘
+                          │
+                          ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    Orchestrator                                  │
+│                  (orchestrator.py)                               │
+│                                                                  │
+│  • Pipeline flow control (Discovery → Profiling → Writing)       │
+│  • Loads ToolRegistry from weekly_runs/_registry/ once per run   │
+│  • CostBudget: enforces --max-cost-usd, graceful shutdown        │
+│  • Weave @weave.op: wraps the entire run in one root trace       │
+│  • run_metadata.json: tokens / cost / elapsed time               │
+│  • Resume: skips Discovery if _candidates.jsonl already exists   │
+└──────┬───────────────────────┬───────────────────┬──────────────┘
+       │                       │                   │
+       ▼                       ▼                   ▼
+   Stage 1                Stage 2 (×N)         Stage 3
+       │                       │                   │
+┌──────┴──────┐     ┌──────────┴──────┐   ┌───────┴──────┐
+│DiscoveryAgent│     │  ProfilerAgent  │   │ WriterAgent   │
+│             │     │  (per candidate)│   │              │
+│ Role:        │     │                 │   │ Role:        │
+│ Find new    │     │ Role:           │   │ Generate     │
+│ tools via   │     │ Deep-dive on    │   │ comparison   │
+│ broad web   │     │ one tool +      │   │ table +      │
+│ search      │     │ scope-filter    │   │ draft.md     │
+│             │     │                 │   │              │
+│ Tools:       │     │ Tools:          │   │ Tools:       │
+│ search_web  │     │ search_web      │   │ read_tool_   │
+│ (Perplexity)│     │ (Perplexity)    │   │ profiles     │
+│ is_known_   │     │ fetch_github_   │   │ read_high-   │
+│ _tool       │     │ _metadata       │   │ lights       │
+│ save_       │     │ save_tool_      │   │ save_draft   │
+│ candidate   │     │ _profile        │   │ save_compa-  │
+│             │     │                 │   │ rison_table  │
+│ Output:      │     │ Scope filter:   │   │              │
+│_candidates  │     │ "does this run  │   │ Output:      │
+│  .jsonl     │     │  experiments?"  │   │ draft.md     │
+│             │     │ → reject if NO  │   │ comparison_  │
+│ Model:       │     │                 │   │  table.md    │
+│ gpt-5.4-    │     │ Output:         │   │              │
+│ mini        │     │ tools/{slug}.md │   │ Model:       │
+│             │     │ (registry)      │   │ gpt-5.4-mini │
+└─────────────┘     │                 │   └──────────────┘
+                    │ Model:          │
+                    │ gpt-5.4-mini    │
+                    └─────────────────┘
+
+Data flow:
+──────────────────────────────────────────────────────────────────
+weekly_runs/_registry/
+  tools.jsonl                       ← global tool index (one row per tool)
+  profiles/{slug}.md                ← canonical ToolProfile per tool
+  sources.jsonl                     ← cumulative citation sources
+
+weekly_runs/{week}/
+  _candidates.jsonl                 ← Discovery output
+  _new_candidates.jsonl             ← tools profiled for the first time this week
+  _updated_tools.jsonl              ← tools whose stars/last_commit changed
+  highlights.md                     ← auto-generated "what's new" section
+  draft.md                          ← main publishable draft
+  comparison_table.md               ← standalone table
+
+Weave trace tree:
+──────────────────────────────────────────────────────────────────
+📦 run_briefing(week=2026-W19)            ← @weave.op root
+  ├─ 🍩 DiscoveryAgent run                ← Runner.run() once
+  ├─ 🍩 ProfilerAgent: tool-a             ← Runner.run() once per tool
+  ├─ 🍩 ProfilerAgent: tool-b
+  ├─ 🍩 ProfilerAgent: ...
+  └─ 🍩 WriterAgent run                   ← Runner.run() once
+```
+
+### Per-agent role summary
+
+| | DiscoveryAgent | ProfilerAgent | WriterAgent |
+|---|---|---|---|
+| **When** | Stage 1, once | Stage 2, once per candidate | Stage 3, once |
+| **Input** | Scope definition | One candidate (name, URL) | All registry profiles |
+| **What** | 15+ Perplexity searches to surface candidates | Deep-dive collection + **scope filter** | Compose comparison table + draft |
+| **Key check** | First-pass IN/OUT classification | "Does this actually run experiments?" (second-pass verify) | Facts only, no marketing tone |
+| **On failure** | Save partial list, halt | Save rejection reason, move on | Compose with whatever is there |
+
+ProfilerAgent's scope filter is the most important safety net: even if Discovery seeds a deep-research tool into the candidate list, ProfilerAgent's second-pass filter will catch it.
+
+---
+
+## Weekly Accumulation Model
+
+```
+weekly_runs/
+├── _registry/                       ← global, persistent across weeks
+│   ├── tools.jsonl                  # cumulative tool index
+│   ├── profiles/{slug}.md           # canonical profiles
+│   └── sources.jsonl
+│
+├── 2026-W19/                        ← per-week change log
+│   ├── _new_candidates.jsonl        # tools profiled for the first time
+│   ├── _updated_tools.jsonl         # tools whose metadata changed
+│   ├── highlights.md
+│   ├── draft.md
+│   └── comparison_table.md
+│
+└── 2026-W20/
+    └── ...
+```
+
+Each weekly run starts by loading the registry. DiscoveryAgent calls `is_known_tool(url)` before saving any candidate — already-known tools are skipped, saving Perplexity / LLM cost. ProfilerAgent only profiles new candidates; metadata changes (stars, last commit) on existing tools are detected and logged to `_updated_tools.jsonl`. WriterAgent reads all profiles from the registry and the per-week change files.
+
+---
+
+## Install
+
+Requires Python 3.11+ and [`uv`](https://docs.astral.sh/uv/).
 
 ```bash
 git clone <repo>
 cd autoresearch-researcher
 uv sync
 cp .env.example .env
-# .env에 OPENAI_API_KEY, WANDB_API_KEY 입력
+# Fill OPENAI_API_KEY, PERPLEXITY_API_KEY, WANDB_API_KEY in .env
 ```
 
-## 환경 변수
+## Environment variables
 
-| 변수 | 필수 | 설명 |
-|------|------|------|
-| `OPENAI_API_KEY` | ✅ | OpenAI API 키 |
-| `WANDB_API_KEY` | ✅ | W&B Weave 트레이싱용 |
-| `GITHUB_TOKEN` | 선택 | GitHub API rate limit 회피 |
-| `WANDB_ENTITY` | 선택 | W&B entity (기본: `wandb-smle`) |
-| `WANDB_PROJECT` | 선택 | W&B project (기본: `autoresearch-researcher`) |
+| Variable | Required | Purpose |
+|----------|----------|---------|
+| `OPENAI_API_KEY` | ✅ | OpenAI Chat Completions |
+| `PERPLEXITY_API_KEY` | ✅ | DiscoveryAgent + ProfilerAgent web search (sonar-pro) |
+| `WANDB_API_KEY` | ✅ | W&B Weave tracing |
+| `GITHUB_TOKEN` | optional | Raises GitHub API rate limit |
+| `WANDB_ENTITY` | optional | Defaults to `wandb-smle` |
+| `WANDB_PROJECT` | optional | Defaults to `autoresearch-researcher` |
 
-## 사용법
+---
 
-### 주간 브리핑 실행
+## Usage
+
+### Run a weekly briefing
 
 ```bash
 uv run autoresearch-researcher run --week 2026-W19
 ```
 
-옵션:
+Flags:
 
-| 플래그 | 기본값 | 설명 |
-|--------|--------|------|
-| `--week` | (필수) | ISO 주차 식별자 (예: `2026-W19`) |
-| `--max-tools` | 12 | 프로파일링할 최대 도구 수 |
-| `--max-cost-usd` | 20.0 | 비용 상한 (초과 시 graceful 종료) |
-| `--dry-run` | false | 실제 LLM 호출 없이 파이프라인 검증 |
-| `--rerun` | false | 이미 존재하는 주차 폴더 재실행 (이전 폴더 백업) |
+| Flag | Default | Purpose |
+|------|---------|---------|
+| `--week` | (required) | ISO week id (e.g. `2026-W19`) |
+| `--max-tools` | 12 | Maximum candidates ProfilerAgent will process |
+| `--max-cost-usd` | 20.0 | Hard cost ceiling — graceful shutdown on overage |
+| `--dry-run` | false | Validate the pipeline with no LLM calls |
+| `--rerun` | false | Allow re-running an existing week (auto-backs up the previous folder) |
 
-### 출력 구조
+### Generate diff after human review
 
-```
-weekly_runs/2026-W19/
-├── draft.md                  # 메인 발행 초안
-├── comparison_table.md       # 도구 비교 표
-├── tools/
-│   └── {tool-slug}.md        # 도구별 상세 카드 (YAML front-matter)
-├── sources.jsonl             # 모든 인용 출처
-├── _candidates.jsonl         # DiscoveryAgent 발굴 후보 목록
-├── run_metadata.json         # 실행 시각, 모델, 토큰, 비용
-│
-└── (사람이 작성)
-    ├── final.md              # 검수·수정한 발행본
-    ├── feedback.md           # 구조화된 피드백
-    └── diff.md               # draft vs final 자동 diff
-```
-
-### 검수 후 diff 생성
-
-`final.md`를 직접 작성한 뒤:
+After you write `final.md`:
 
 ```bash
 uv run autoresearch-researcher diff --week 2026-W19
 ```
 
-`diff.md` (변경 분류: ADD / FIX / REMOVE / REWORD / BALANCE) 와 `feedback.md` 템플릿이 자동 생성됩니다.
+Produces `diff.md` (changes classified ADD / FIX / REMOVE / REWORD / BALANCE) and a `feedback.md` template.
 
-## 아키텍처
+---
 
-### 에이전트
-
-| 에이전트 | 입력 | 도구 | 출력 |
-|----------|------|------|------|
-| **DiscoveryAgent** | 스코프 정의 | `WebSearchTool`, `save_candidate` | `_candidates.jsonl` |
-| **ProfilerAgent** | 후보 1개 | `WebSearchTool`, `fetch_github_metadata`, `save_tool_profile` | `tools/{slug}.md` |
-| **WriterAgent** | 모든 `tools/*.md` | `save_draft`, `save_comparison_table` | `draft.md`, `comparison_table.md` |
-
-### 스코프 필터 (ProfilerAgent)
-
-ProfilerAgent는 수집 후 자기 검증을 수행합니다.
-
-> "이 도구는 실험을 실행하거나 코드/논문을 자율 생성하는가?"
-> 단순 검색·요약·검토만 한다면 → **제외**
-
-### 관측성 (W&B Weave)
-
-실행 시 Weave 트레이스 URL이 CLI에 출력됩니다. 모든 LLM 호출, 도구 실행, 에이전트 핸드오프가 자동으로 기록됩니다.
-
-```python
-# orchestrator.py — 앱 lifecycle 1회만
-weave.init("wandb-smle/autoresearch-researcher")
-set_trace_processors([WeaveTracingProcessor()])
-```
-
-## 테스트
+## Tests
 
 ```bash
-# 단위 테스트 (LLM 모킹, 무료)
+# Unit tests (LLM mocked, free)
 uv run pytest tests/unit/
 
-# e2e 스모크 테스트 (dry-run, 실제 API 호출 없음)
+# E2E smoke test (dry-run, no real API calls)
 uv run pytest -m expensive tests/e2e/
 
-# 전체
+# Everything
 uv run pytest tests/
 ```
 
-e2e 테스트는 `@pytest.mark.expensive`로 분리되어 CI에서는 자동 스킵됩니다.
+E2E tests are gated behind `@pytest.mark.expensive` so CI skips them by default.
 
-## 비용 가드레일
+---
 
-`--max-cost-usd`(기본 $20) 도달 시 graceful 종료합니다. 진행 중 단계까지의 산출물은 보존됩니다. 부분 실패 후 재실행 시 `_candidates.jsonl`이 있으면 Discovery를 건너뛰고 ProfilerAgent부터 재개합니다.
+## Cost guardrails & resume
 
-## 에이전트 프롬프트 커스터마이징
+`--max-cost-usd` (default $20) triggers a graceful shutdown when the cumulative API spend exceeds the threshold. Stage outputs already on disk are kept. On the next run, if `_candidates.jsonl` exists, Discovery is skipped and ProfilerAgent resumes from there.
 
-모든 에이전트 지시사항은 `src/autoresearch_researcher/instructions/` 아래 Markdown 파일로 분리되어 있습니다. 코드 수정 없이 프롬프트를 튜닝할 수 있습니다.
+---
+
+## Customizing agent prompts
+
+All agent instructions live as separate Markdown files under `src/autoresearch_researcher/instructions/`. You can tune prompts without touching code.
 
 ```
 instructions/
-├── discovery.md   # 스코프 정의, 검색 전략
-├── profiler.md    # 수집 항목, 스코프 필터 규칙
-└── writer.md      # 발행 형식, 톤 가이드
+├── discovery.md   # scope definition, search strategy
+├── profiler.md    # collection fields, scope filter rules
+└── writer.md      # publish format, tone guide
 ```
 
-## v1 비-목표 (v2 이후)
+---
 
-- feedback.md를 system prompt에 자동 반영
-- GitHub releases / RSS 알림
-- HTML / 대시보드 출력
-- 에이전트 자가 학습
+## v1 non-goals (deferred to v2+)
+
+- Auto-feeding `feedback.md` back into system prompts
+- GitHub releases / RSS notifications
+- HTML / dashboard output
+- Self-learning agents

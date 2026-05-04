@@ -99,8 +99,8 @@ def test_generate_feedback_template_has_all_sections():
 def test_generate_feedback_template_has_score_fields():
     from autoresearch_researcher.tools.diff import generate_feedback_template
     result = generate_feedback_template(week="2026-W19")
-    assert "정확성" in result
-    assert "완전성" in result
+    assert "Accuracy" in result
+    assert "Completeness" in result
 
 
 # ── CLI diff command integration ──────────────────────────────────────────────
