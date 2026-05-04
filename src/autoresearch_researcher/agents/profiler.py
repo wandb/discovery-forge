@@ -72,10 +72,13 @@ def is_experiment_automation(
     return exp_count > 0
 
 
-def build_profiler_agent(output_dir: Path) -> Agent:
-    """Build and return the ProfilerAgent."""
+def build_profiler_agent(output_dir: Path, registry=None, week: str | None = None) -> Agent:
+    """Build and return the ProfilerAgent.
+
+    If `registry` is provided, save_tool_profile routes the canonical profile
+    into the global registry (and records new/updated status for the given week).
+    """
     tools_dir = output_dir / "tools"
-    rejected_dir = output_dir
 
     @function_tool
     def save_tool_profile_tool(
@@ -97,7 +100,8 @@ def build_profiler_agent(output_dir: Path) -> Agent:
         project_url: str | None,
         source_ids: list[int],
     ) -> str:
-        """Save a profiled tool to tools/{slug}.md with YAML front-matter."""
+        """Save a profiled tool. With registry: routes to _registry/profiles/{slug}.md;
+        without registry: tools/{slug}.md."""
         profile = ToolProfile(
             slug=slug,
             name=name,
@@ -117,6 +121,17 @@ def build_profiler_agent(output_dir: Path) -> Agent:
             project_url=project_url,
             source_ids=source_ids,
         )
+
+        if registry is not None and week is not None:
+            is_new = registry.add(profile, week=week)
+            # Also log to the week dir which tools became new vs. updated
+            log_file = output_dir / ("_new_candidates.jsonl" if is_new else "_updated_tools.jsonl")
+            log_file.parent.mkdir(parents=True, exist_ok=True)
+            with log_file.open("a") as f:
+                import json
+                f.write(json.dumps({"slug": slug, "name": name, "stars": stars}) + "\n")
+            return f"Saved profile to registry: {slug} ({'new' if is_new else 'updated'})"
+
         save_tool_profile(profile, tools_dir)
         return f"Saved profile: {slug}"
 

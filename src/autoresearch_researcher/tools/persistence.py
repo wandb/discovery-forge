@@ -46,6 +46,7 @@ def save_tool_profile(profile: ToolProfile, tools_dir: Path) -> None:
         "paper_url": profile.paper_url,
         "project_url": profile.project_url,
         "source_ids": profile.source_ids,
+        "key_limitations": profile.key_limitations,
     }
     body_lines = [
         f"# {profile.name}",

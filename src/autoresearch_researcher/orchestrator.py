@@ -120,8 +120,9 @@ async def run_briefing(
     """
     from autoresearch_researcher.agents.discovery import build_discovery_agent
     from autoresearch_researcher.agents.profiler import build_profiler_agent
-    from autoresearch_researcher.agents.writer import build_writer_agent
+    from autoresearch_researcher.agents.writer import build_writer_agent, generate_highlights
     from autoresearch_researcher.tools.persistence import load_candidates
+    from autoresearch_researcher.tools.registry import ToolRegistry
 
     budget = CostBudget(max_usd=max_cost_usd)
     prompt_tokens = 0
@@ -129,6 +130,9 @@ async def run_briefing(
     total_cost = 0.0
 
     candidates_file = output_dir / "_candidates.jsonl"
+    registry_dir = output_dir.parent / "_registry"
+    registry = ToolRegistry.load(registry_dir)
+    print(f"[orchestrator] Registry loaded: {len(registry.get_all_entries())} known tools")
 
     if dry_run:
         # In dry-run mode, skip real LLM calls; create placeholder outputs
@@ -140,13 +144,16 @@ async def run_briefing(
         if should_skip_discovery(output_dir):
             print(f"[orchestrator] Skipping Discovery — {candidates_file} already exists.")
         else:
-            discovery_agent = build_discovery_agent(output_dir=output_dir, max_tools=max_tools)
+            discovery_agent = build_discovery_agent(
+                output_dir=output_dir, max_tools=max_tools, registry=registry,
+            )
             discovery_prompt = (
                 f"Discover experiment-automation tools for the week of {week}. "
-                f"Find up to {max_tools} candidates and save them."
+                f"Find up to {max_tools} candidates and save them. "
+                "For each URL, first call is_known_tool to skip ones already in the registry."
             )
             with weave.attributes({"week": week, "stage": "discovery"}):
-                disc_result = await Runner.run(discovery_agent, input=discovery_prompt, max_turns=60)
+                disc_result = await Runner.run(discovery_agent, input=discovery_prompt, max_turns=120)
 
             usage = _extract_usage(disc_result)
             prompt_tokens += usage[0]
@@ -154,11 +161,15 @@ async def run_briefing(
             total_cost += usage[2]
             budget.add(usage[2])
 
-        # ── Stage 2: Profiling (resume: skip already-profiled candidates) ─────
-        candidates = get_unprofiled_candidates(output_dir)
-        if not candidates:
-            candidates = load_candidates(candidates_file)
-        profiler_agent = build_profiler_agent(output_dir=output_dir)
+        # ── Stage 2: Profiling (registry-aware) ───────────────────────────────
+        candidates = load_candidates(candidates_file)
+        # Filter out candidates that are already in the global registry
+        candidates = [c for c in candidates if not registry.contains(c.url)]
+        print(f"[orchestrator] Profiling {len(candidates)} new candidates (registry already has known ones)")
+
+        profiler_agent = build_profiler_agent(
+            output_dir=output_dir, registry=registry, week=week,
+        )
 
         with weave.attributes({"week": week, "stage": "profiling"}):
             for candidate in candidates:
@@ -175,10 +186,19 @@ async def run_briefing(
                 budget.add(usage[2])
 
         # ── Stage 3: Writing ──────────────────────────────────────────────────
-        writer_agent = build_writer_agent(output_dir=output_dir, week=week)
+        # Build highlights from this week's _new_candidates / _updated_tools
+        highlights_md = generate_highlights(output_dir, week=week)
+        (output_dir / "highlights.md").write_text(highlights_md)
+
+        # Writer reads from the global registry, not week_dir/tools/
+        writer_agent = build_writer_agent(
+            output_dir=output_dir, week=week, registry=registry,
+        )
         write_prompt = (
-            f"Read all tool profiles in tools/ and generate the weekly briefing for {week}. "
-            "Call read_tool_profiles_tool first, then save_draft_tool and save_comparison_table_tool."
+            f"Generate the weekly briefing for {week}. "
+            "Call read_tool_profiles_tool to load profiles from the global registry, "
+            "then incorporate the pre-generated highlights from highlights.md, "
+            "and save the final draft via save_draft_tool and save_comparison_table_tool."
         )
         with weave.attributes({"week": week, "stage": "writing"}):
             write_result = await Runner.run(writer_agent, input=write_prompt, max_turns=20)

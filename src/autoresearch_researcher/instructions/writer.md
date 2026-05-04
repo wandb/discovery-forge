@@ -29,9 +29,11 @@ Your draft.md must contain these sections in order:
 ```
 
 ### 2. This Week's Highlights
-- List 3–5 notable new releases or significant updates
-- If no notable updates exist, write: "No major updates this week."
-- If this is the first run (no prior week folder), write: "First issue — baseline established."
+- **Call `read_highlights_tool` first** — it returns the pre-computed highlights for this week
+  (newly profiled tools and tools with metadata changes from the global registry).
+- Use the returned content as the basis for this section. Optionally enrich with 1–2 sentences of context per highlighted tool.
+- Do NOT invent highlights that aren't in the pre-computed output.
+- If `read_highlights_tool` returns the "no new tools" baseline message, copy it as-is.
 
 ### 3. Use-Case Recommendation Matrix
 A markdown table mapping user situations to recommended tools:

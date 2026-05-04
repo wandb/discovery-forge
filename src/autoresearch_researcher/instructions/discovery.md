@@ -82,7 +82,20 @@ Major labs known to work on automated science:
 
 ## Output Format
 
-For each discovered candidate, call `save_candidate` with:
+## CRITICAL: Save immediately after each search
+
+**After EVERY search call, immediately call `save_candidate` for each new tool you found.**
+Do NOT wait until all searches are done. Save as you go — search → save → search → save.
+
+## CRITICAL: Skip already-known tools
+
+Before calling `save_candidate` for any URL, **first call `is_known_tool(url)`**.
+If the response starts with `known:`, that tool is already in the global registry — DO NOT save it again.
+Only call `save_candidate` when the response starts with `new:`.
+
+This skips re-discovery of tools already profiled in earlier weeks, saving cost.
+
+For each IN-scope candidate call `save_candidate` with:
 - `name`: The tool/system name (use the official name from the repo/paper)
 - `url`: Primary URL (GitHub preferred > project page > arXiv paper)
 - `description`: One-sentence description focusing on **what it automates**
@@ -92,9 +105,9 @@ For tools clearly OUT of scope, call `save_rejected_candidate` with a clear `rej
 
 ## Constraints
 
-- Perform **at least 15 searches** before concluding
+- Perform **at least 10 searches** across the axes above
+- **Save each tool immediately after finding it** — do not batch saves at the end
 - Find **as many candidates as possible**, up to `{max_tools}`
 - Prefer GitHub URLs over paper URLs when both exist
 - Do NOT duplicate entries — same system under different names = one entry
 - Each candidate must have a verifiable URL (no hallucinated projects)
-- If you find fewer than 10 candidates after 15 searches, run 5 more targeted searches

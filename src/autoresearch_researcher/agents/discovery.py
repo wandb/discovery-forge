@@ -19,8 +19,13 @@ def load_instructions(agent_name: str) -> str:
     return path.read_text()
 
 
-def build_discovery_agent(output_dir: Path, max_tools: int = 12) -> Agent:
-    """Build and return the DiscoveryAgent."""
+def build_discovery_agent(output_dir: Path, max_tools: int = 12, registry=None) -> Agent:
+    """Build and return the DiscoveryAgent.
+
+    If `registry` is provided, the agent gets an `is_known_tool` tool that
+    returns whether a URL is already in the global registry, so it can skip
+    re-discovery and save Perplexity calls.
+    """
     candidates_file = output_dir / "_candidates.jsonl"
     rejected_file = output_dir / "_rejected.jsonl"
 
@@ -55,20 +60,30 @@ def build_discovery_agent(output_dir: Path, max_tools: int = 12) -> Agent:
         save_rejected_candidate(rejected, rejected_file)
         return f"Rejected: {name} — {rejection_reason}"
 
-    instructions = load_instructions("discovery").replace("{max_tools}", str(max_tools))
-
     @function_tool
     def search_web(query: str) -> str:
         """Search the web using Perplexity AI. Returns a summary with source URLs."""
         return perplexity_search(query)
 
+    @function_tool
+    def is_known_tool(url: str) -> str:
+        """Check if a tool URL is already in the global registry. Returns 'known' or 'new'."""
+        if registry is not None and registry.contains(url):
+            return f"known: {url} is already in the global registry — skip it."
+        return f"new: {url} is not in the registry yet — proceed to save_candidate."
+
+    instructions = load_instructions("discovery").replace("{max_tools}", str(max_tools))
+
+    tools = [search_web, save_candidate_tool, save_rejected_candidate_tool]
+    if registry is not None:
+        tools.insert(1, is_known_tool)
+    else:
+        # Always expose the tool name (returns "new" stub) so callers can rely on it.
+        tools.insert(1, is_known_tool)
+
     return Agent(
         name="DiscoveryAgent",
         instructions=instructions,
-        tools=[
-            search_web,
-            save_candidate_tool,
-            save_rejected_candidate_tool,
-        ],
+        tools=tools,
         model="gpt-5.4-mini",
     )
