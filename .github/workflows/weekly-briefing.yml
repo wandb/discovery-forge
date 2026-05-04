@@ -1,0 +1,78 @@
+name: Weekly Briefing
+
+on:
+  # KST Monday 9:00 AM = UTC Monday 00:00
+  schedule:
+    - cron: '0 0 * * 1'
+  workflow_dispatch:
+    inputs:
+      week:
+        description: 'ISO week id (defaults to current week)'
+        required: false
+        type: string
+      max_cost_usd:
+        description: 'Cost ceiling in USD'
+        required: false
+        type: string
+        default: '15'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: weekly-briefing
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Sync dependencies
+        run: uv sync
+
+      - name: Resolve week id
+        id: week
+        run: |
+          if [ -n "${{ inputs.week }}" ]; then
+            echo "week=${{ inputs.week }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "week=$(date -u +'%G-W%V')" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run weekly briefing
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          PERPLEXITY_API_KEY: ${{ secrets.PERPLEXITY_API_KEY }}
+          WANDB_API_KEY: ${{ secrets.WANDB_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          uv run autoresearch-researcher run \
+            --week "${{ steps.week.outputs.week }}" \
+            --max-cost-usd "${{ inputs.max_cost_usd || '15' }}" \
+            --rerun
+
+      - name: Commit and push results
+        if: always()
+        run: |
+          git config user.name "autoresearch-bot"
+          git config user.email "autoresearch-bot@users.noreply.github.com"
+          git add weekly_runs/
+          if git diff --cached --quiet; then
+            echo "No new files to commit."
+          else
+            git commit -m "weekly: ${{ steps.week.outputs.week }} briefing"
+            git push
+          fi
