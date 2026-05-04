@@ -104,6 +104,7 @@ def get_unprofiled_candidates(output_dir: Path) -> list:
     return [c for c in candidates if name_to_slug(c.name) not in profiled_slugs]
 
 
+@weave.op
 async def run_briefing(
     week: str,
     output_dir: Path,
