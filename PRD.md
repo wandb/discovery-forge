@@ -165,11 +165,11 @@ Orchestrator (CLI entrypoint)
 - [x] CLI 출력에 Weave 트레이스 URL 표시 (사후 검수 시 바로 클릭 가능)
 
 ### US8: Diff 인프라 (피드백 루프 시드)
-- [ ] CLI 서브커맨드: `autoresearch-researcher diff --week 2026-W19`
+- [x] CLI 서브커맨드: `autoresearch-researcher diff --week 2026-W19`
   - 본인이 `final.md` 작성 후 실행
   - `draft.md` vs `final.md`를 라인별 + 의미 분류 diff로 `diff.md` 생성
   - 분류: ADD(추가된 도구), FIX(사실 수정), REMOVE, REWORD, BALANCE
-- [ ] `feedback.md` 템플릿 자동 생성 (사람이 채워넣을 양식, 아래 참조)
+- [x] `feedback.md` 템플릿 자동 생성 (사람이 채워넣을 양식, 아래 참조)
 
 ### US9: 재실행 안전성
 - [ ] `--rerun` 플래그로 같은 주차 재실행 허용 (이전 폴더 백업)

@@ -112,4 +112,15 @@ def diff(
         typer.echo(f"ERROR: {final} not found. Write final.md first.", err=True)
         raise typer.Exit(code=1)
 
-    typer.echo(f"Diff not yet implemented (US8). draft={draft}, final={final}")
+    from autoresearch_researcher.tools.diff import generate_diff, generate_feedback_template
+
+    diff_content = generate_diff(draft.read_text(), final.read_text())
+    (week_dir / "diff.md").write_text(diff_content)
+    typer.echo(f"diff.md written to {week_dir / 'diff.md'}")
+
+    feedback_path = week_dir / "feedback.md"
+    if not feedback_path.exists():
+        feedback_path.write_text(generate_feedback_template(week=week))
+        typer.echo(f"feedback.md template written to {feedback_path}")
+    else:
+        typer.echo(f"feedback.md already exists — not overwriting.")
