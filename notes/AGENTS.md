@@ -17,6 +17,11 @@
 ## Logged learnings
 (이 섹션은 에이전트가 매 이터레이션 후 추가)
 
+### iter Q2 (2026-05-04)
+- 학계 시스템(AI Scientist, AI-Researcher, Agent Lab)과 산업계 딥 리서치(OpenAI/Google/Perplexity)는 목적·범위가 달라 별도로 분류해야 비교 가능.
+- Sakana AI의 "피어리뷰 통과" 주장은 nuanced — 리뷰어 사전 고지·3편 중 1편 통과라는 맥락을 함께 기록해야 편향 없음.
+- 도메인 편향(ML 집중) 메모가 Q3·Q4 작성 시 재사용 가능한 핵심 약점임.
+
 ### iter Q1 (2026-05-04)
 - "autoresearch"는 Karpathy 특정 도구(2026-03 공개)와 광의의 자율 연구 에이전트 개념 모두를 지칭하므로 문맥 구분이 필수.
 - arXiv 직접 fetch는 일부 차단되므로 abstract 페이지(arxiv.org/abs/...)를 우선, html 버전은 선택적 시도.
