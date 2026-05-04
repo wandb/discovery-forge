@@ -135,23 +135,28 @@ async def run_briefing(
         return
 
     try:
-        # ── Stage 1: Discovery ────────────────────────────────────────────────
-        discovery_agent = build_discovery_agent(output_dir=output_dir, max_tools=max_tools)
-        discovery_prompt = (
-            f"Discover experiment-automation tools for the week of {week}. "
-            f"Find up to {max_tools} candidates and save them."
-        )
-        with weave.attributes({"week": week, "stage": "discovery"}):
-            disc_result = await Runner.run(discovery_agent, input=discovery_prompt, max_turns=20)
+        # ── Stage 1: Discovery (skip if _candidates.jsonl already exists) ─────
+        if should_skip_discovery(output_dir):
+            print(f"[orchestrator] Skipping Discovery — {candidates_file} already exists.")
+        else:
+            discovery_agent = build_discovery_agent(output_dir=output_dir, max_tools=max_tools)
+            discovery_prompt = (
+                f"Discover experiment-automation tools for the week of {week}. "
+                f"Find up to {max_tools} candidates and save them."
+            )
+            with weave.attributes({"week": week, "stage": "discovery"}):
+                disc_result = await Runner.run(discovery_agent, input=discovery_prompt, max_turns=60)
 
-        usage = _extract_usage(disc_result)
-        prompt_tokens += usage[0]
-        completion_tokens += usage[1]
-        total_cost += usage[2]
-        budget.add(usage[2])
+            usage = _extract_usage(disc_result)
+            prompt_tokens += usage[0]
+            completion_tokens += usage[1]
+            total_cost += usage[2]
+            budget.add(usage[2])
 
-        # ── Stage 2: Profiling ────────────────────────────────────────────────
-        candidates = load_candidates(candidates_file)
+        # ── Stage 2: Profiling (resume: skip already-profiled candidates) ─────
+        candidates = get_unprofiled_candidates(output_dir)
+        if not candidates:
+            candidates = load_candidates(candidates_file)
         profiler_agent = build_profiler_agent(output_dir=output_dir)
 
         with weave.attributes({"week": week, "stage": "profiling"}):

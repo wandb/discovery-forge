@@ -1,12 +1,14 @@
-"""DiscoveryAgent: finds experiment-automation tool candidates via web search."""
+"""DiscoveryAgent: finds experiment-automation tool candidates via Perplexity search."""
 
 import json
+import os
 from pathlib import Path
 
-from agents import Agent, WebSearchTool, function_tool
+from agents import Agent, function_tool
 
 from autoresearch_researcher.schemas.candidate import Candidate, RejectedCandidate
 from autoresearch_researcher.tools.persistence import save_candidate, save_rejected_candidate
+from autoresearch_researcher.tools.search import perplexity_search
 
 INSTRUCTIONS_DIR = Path(__file__).parent.parent / "instructions"
 
@@ -55,11 +57,16 @@ def build_discovery_agent(output_dir: Path, max_tools: int = 12) -> Agent:
 
     instructions = load_instructions("discovery").replace("{max_tools}", str(max_tools))
 
+    @function_tool
+    def search_web(query: str) -> str:
+        """Search the web using Perplexity AI. Returns a summary with source URLs."""
+        return perplexity_search(query)
+
     return Agent(
         name="DiscoveryAgent",
         instructions=instructions,
         tools=[
-            WebSearchTool(),
+            search_web,
             save_candidate_tool,
             save_rejected_candidate_tool,
         ],
