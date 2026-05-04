@@ -29,3 +29,14 @@
 {"id": "S29", "q_id": "Q3", "title": "DeepResearch Bench: A Comprehensive Benchmark for Deep Research Agents", "url": "https://deepresearch-bench.github.io/", "type": "primary", "date": "2025"}
 {"id": "S30", "q_id": "Q3", "title": "Humanity's Last Exam (arXiv 2501.14249)", "url": "https://arxiv.org/abs/2501.14249", "type": "primary", "date": "2025-01"}
 {"id": "S31", "q_id": "Q3", "title": "Humanity's Last Exam: The Super-Benchmark AI Is Currently Failing", "url": "https://neurosciencenews.com/humanity-last-exam-ai-benchmark-30191/", "type": "secondary", "date": "2025"}
+{"id": "S32", "q_id": "Q4", "title": "MLR-Bench: Evaluating AI Agents on Open-Ended ML Research (arXiv 2505.19955)", "url": "https://arxiv.org/abs/2505.19955", "type": "primary", "date": "2025-05"}
+{"id": "S33", "q_id": "Q4", "title": "The AI Scientist-v2: Workshop-Level Automated Scientific Discovery (arXiv 2504.08066)", "url": "https://arxiv.org/abs/2504.08066", "type": "primary", "date": "2025-04"}
+{"id": "S34", "q_id": "Q4", "title": "Why LLMs Aren't Scientists Yet: Lessons from Four Autonomous Research Attempts (arXiv 2601.03315)", "url": "https://arxiv.org/abs/2601.03315", "type": "primary", "date": "2026-01"}
+{"id": "S35", "q_id": "Q4", "title": "BadScientist: Can a Research Agent Write Convincing but Unsound Papers (arXiv 2510.18003)", "url": "https://arxiv.org/abs/2510.18003", "type": "primary", "date": "2025-10"}
+{"id": "S36", "q_id": "Q4", "title": "NeurIPS research papers contained 100+ AI-hallucinated citations (Fortune)", "url": "https://fortune.com/2026/01/21/neurips-ai-conferences-research-papers-hallucinations/", "type": "secondary", "date": "2026-01"}
+{"id": "S37", "q_id": "Q4", "title": "ChatGPT's Hallucination Problem: More Than Half Of AI's References Are Fabricated", "url": "https://studyfinds.org/chatgpts-hallucination-problem-fabricated-references/", "type": "secondary", "date": "2024"}
+{"id": "S38", "q_id": "Q4", "title": "Detecting and Correcting Reference Hallucinations in Deep Research Agents (arXiv 2604.03173)", "url": "https://arxiv.org/html/2604.03173v1", "type": "primary", "date": "2026-04"}
+{"id": "S39", "q_id": "Q4", "title": "Hallucinated citations are polluting the scientific literature (Nature)", "url": "https://www.nature.com/articles/d41586-026-00969-z", "type": "secondary", "date": "2026"}
+{"id": "S40", "q_id": "Q4", "title": "Influence of Topic Familiarity and Prompt Specificity on Citation Fabrication (PMC)", "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC12658395/", "type": "primary", "date": "2025"}
+{"id": "S41", "q_id": "Q4", "title": "Is AI leading to a reproducibility crisis in science? (Nature)", "url": "https://www.nature.com/articles/d41586-023-03817-6", "type": "secondary", "date": "2023-11"}
+{"id": "S42", "q_id": "Q4", "title": "Agentic AI for Scientific Discovery: A Survey (arXiv 2503.08979)", "url": "https://arxiv.org/html/2503.08979v1", "type": "primary", "date": "2025-03"}

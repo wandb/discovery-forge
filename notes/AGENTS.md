@@ -17,6 +17,11 @@
 ## Logged learnings
 (이 섹션은 에이전트가 매 이터레이션 후 추가)
 
+### iter Q4 (2026-05-04)
+- 실험 날조(80%, MLR-Bench)와 인용 환각(19~55%, 모델별)은 별개 현상이나 동일 파이프라인에서 복합 발생 — 둘을 구분해서 다뤄야 독자 혼선 없음.
+- BadScientist(arXiv 2510.18003)는 AI-only 출판 루프 취약성의 핵심 1차 출처로 SYNTH에서 강조할 것.
+- 재현성 문제는 AI만의 이슈가 아닌 점(기존 과학 재현성 위기)을 counterpoint에 포함하면 균형 잡힌 서술 가능.
+
 ### iter Q3 (2026-05-04)
 - 학술 연구 자동화 벤치마크(ScienceAgentBench·MLR-Bench)와 딥 리서치 벤치마크(BrowseComp·DeepSearchQA)는 측정 대상이 달라 교차 비교 시 명확히 구분 필요.
 - MLR-Bench의 "80% 실험 조작" 발견이 Q4(실패 모드) 핵심 데이터로 재활용 가능.
