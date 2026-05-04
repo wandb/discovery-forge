@@ -1,0 +1,8 @@
+{"id": "S1", "q_id": "Q1", "title": "A Guide to Andrej Karpathy's AutoResearch: Automating ML with AI Agents", "url": "https://www.datacamp.com/tutorial/guide-to-autoresearch", "type": "secondary", "date": "2026-03"}
+{"id": "S2", "q_id": "Q1", "title": "Running Karpathy's Autoresearch with Local LLM for Zero Cost Autonomous AI Research", "url": "https://explore.n1n.ai/blog/running-karpathy-autoresearch-local-llm-zero-cost-2026-03-23", "type": "secondary", "date": "2026-03"}
+{"id": "S3", "q_id": "Q1", "title": "AI-Researcher: Autonomous Scientific Innovation (arXiv 2505.18705)", "url": "https://arxiv.org/html/2505.18705v1", "type": "primary", "date": "2025-05"}
+{"id": "S4", "q_id": "Q1", "title": "From Automation to Autonomy: A Survey on Large Language Models in Scientific Discovery (arXiv 2505.13259)", "url": "https://arxiv.org/abs/2505.13259", "type": "primary", "date": "2025-05"}
+{"id": "S5", "q_id": "Q1", "title": "The AI Scientist: Towards Fully Automated Open-Ended Scientific Discovery", "url": "https://sakana.ai/ai-scientist/", "type": "primary", "date": "2024-08"}
+{"id": "S6", "q_id": "Q1", "title": "Deep Research: A Survey of Autonomous Research Agents (arXiv 2508.12752)", "url": "https://arxiv.org/html/2508.12752v1", "type": "primary", "date": "2025-08"}
+{"id": "S7", "q_id": "Q1", "title": "OpenAGS Auto-Research GitHub", "url": "https://github.com/openags/Auto-Research", "type": "primary", "date": "2024"}
+{"id": "S8", "q_id": "Q1", "title": "Why LLMs Aren't Scientists Yet: Lessons from Four Autonomous Research Attempts (arXiv 2601.03315)", "url": "https://www.arxiv.org/pdf/2601.03315", "type": "primary", "date": "2026-01"}
