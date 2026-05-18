@@ -13,6 +13,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 app = typer.Typer(name="autoresearch-researcher", help="Weekly tool briefing agent for experiment automation research.")
+feedback_app = typer.Typer(help="Ingest human feedback from Weave traces.")
+app.add_typer(feedback_app, name="feedback")
 
 DEFAULT_OUTPUT_DIR = Path("weekly_runs")
 DEFAULT_MAX_TOOLS = 12
@@ -134,3 +136,28 @@ def diff(
         typer.echo(f"feedback.md template written to {feedback_path}")
     else:
         typer.echo(f"feedback.md already exists — not overwriting.")
+
+
+@feedback_app.command("ingest")
+def feedback_ingest(
+    week: str = typer.Option(..., help="ISO week identifier, e.g. 2026-W19"),
+    output_dir: Path = typer.Option(DEFAULT_OUTPUT_DIR, help="Base output directory"),
+) -> None:
+    """Fetch Weave feedback for per-tool traces and write local review artifacts."""
+    week_dir = output_dir / week
+    profile_runs = week_dir / "_profile_runs.jsonl"
+    if not profile_runs.exists():
+        typer.echo(f"ERROR: {profile_runs} not found.", err=True)
+        raise typer.Exit(code=1)
+
+    try:
+        from autoresearch_researcher.orchestrator import init_observability
+        from autoresearch_researcher.tools.feedback import ingest_feedback
+
+        client = init_observability(week_id=week)
+        events = ingest_feedback(week_dir, client)
+    except Exception as e:
+        typer.echo(f"Feedback ingest failed: {e}", err=True)
+        raise typer.Exit(code=2)
+
+    typer.echo(f"Ingested {len(events)} feedback events into {week_dir / 'feedback_events.jsonl'}")

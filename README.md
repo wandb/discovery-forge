@@ -36,7 +36,7 @@ Orchestrator (CLI)
 │  • Pipeline flow control (Discovery → Profiling → Writing)       │
 │  • Loads ToolRegistry from weekly_runs/_registry/ once per run   │
 │  • CostBudget: enforces --max-cost-usd, graceful shutdown        │
-│  • Weave @weave.op: wraps the entire run in one root trace       │
+│  • Weave traces: named stage traces + one profile trace per tool │
 │  • run_metadata.json: tokens / cost / elapsed time               │
 │  • Resume: skips Discovery if _candidates.jsonl already exists   │
 └──────┬───────────────────────┬───────────────────┬──────────────┘
@@ -67,8 +67,8 @@ Orchestrator (CLI)
 │             │     │ → reject if NO  │   │ comparison_  │
 │ Model:       │     │                 │   │  table.md    │
 │ gpt-5.4-    │     │ Output:         │   │              │
-│ mini        │     │ tools/{slug}.md │   │ Model:       │
-│             │     │ (registry)      │   │ gpt-5.4-mini │
+│ mini        │     │ _registry/      │   │ Model:       │
+│             │     │ profiles/{slug} │   │ gpt-5.4-mini │
 └─────────────┘     │                 │   └──────────────┘
                     │ Model:          │
                     │ gpt-5.4-mini    │
@@ -83,20 +83,30 @@ weekly_runs/_registry/
 
 weekly_runs/{week}/
   _candidates.jsonl                 ← Discovery output
+  _profile_runs.jsonl               ← slug/status/workflow_name/agent_trace_id/weave_call_id per profile trace
   _new_candidates.jsonl             ← tools profiled for the first time this week
   _updated_tools.jsonl              ← tools whose stars/last_commit changed
+  feedback_events.jsonl             ← Weave human feedback ingested by call id
+  prompt_improvement_notes.md       ← maintainer-facing prompt improvement notes
   highlights.md                     ← auto-generated "what's new" section
   draft.md                          ← main publishable draft
   comparison_table.md               ← standalone table
 
-Weave trace tree:
+Weave trace model:
 ──────────────────────────────────────────────────────────────────
-📦 run_briefing(week=2026-W19)            ← @weave.op root
-  ├─ 🍩 DiscoveryAgent run                ← Runner.run() once
-  ├─ 🍩 ProfilerAgent: tool-a             ← Runner.run() once per tool
-  ├─ 🍩 ProfilerAgent: tool-b
-  ├─ 🍩 ProfilerAgent: ...
-  └─ 🍩 WriterAgent run                   ← Runner.run() once
+📦 stage1_discovery                       ← DiscoveryAgent SDK workflow
+  └─ Output: Markdown table of discovered/rejected candidates for quick review
+📦 stage2_profile_tool-a                  ← independent root call for human review
+  └─ ProfilerAgent                        ← agent span for the tool investigation
+      ├─ openai.responses.create          ← model decides next action
+      ├─ search_web                       ← Perplexity-backed search tool
+      ├─ fetch_github_metadata_tool       ← GitHub metadata lookup
+      └─ save_tool_profile_tool           ← accepted profile persistence
+📦 stage2_profile_tool-b                  ← one root call per candidate
+📦 stage2_profile_rejected-c              ← rejected tools are reviewable too
+📦 stage3_writer                          ← WriterAgent SDK workflow
+
+_profile_runs.jsonl links the week/run_id to each tool's workflow_name, agent_trace_id, and weave_call_id.
 ```
 
 ### Per-agent role summary
@@ -123,8 +133,13 @@ weekly_runs/
 │   └── sources.jsonl
 │
 ├── 2026-W19/                        ← per-week change log
+│   ├── run_metadata.json             # run_id, prompt hashes, counts, tokens, cost
+│   ├── _candidates.jsonl             # Discovery output
+│   ├── _profile_runs.jsonl          # per-tool trace links
 │   ├── _new_candidates.jsonl        # tools profiled for the first time
 │   ├── _updated_tools.jsonl         # tools whose metadata changed
+│   ├── feedback_events.jsonl        # optional, after feedback ingest
+│   ├── prompt_improvement_notes.md  # optional, after feedback ingest
 │   ├── highlights.md
 │   ├── draft.md
 │   └── comparison_table.md
@@ -133,7 +148,7 @@ weekly_runs/
     └── ...
 ```
 
-Each weekly run starts by loading the registry. DiscoveryAgent calls `is_known_tool(url)` before saving any candidate — already-known tools are skipped, saving Perplexity / LLM cost. ProfilerAgent only profiles new candidates; metadata changes (stars, last commit) on existing tools are detected and logged to `_updated_tools.jsonl`. WriterAgent reads all profiles from the registry and the per-week change files.
+Each weekly run starts by loading the registry. DiscoveryAgent calls `is_known_tool(url)` before saving any candidate — already-known tools are skipped, saving Perplexity / LLM cost. ProfilerAgent only profiles new candidates; metadata changes (stars, last commit) on existing tools are detected and logged to `_updated_tools.jsonl`. Each candidate profile attempt is recorded in `_profile_runs.jsonl` with the `run_id`, status, `workflow_name`, `agent_trace_id`, prompt hash, and Weave call ID so a human can review and annotate that tool trace directly. WriterAgent reads all profiles from the registry and the per-week change files.
 
 ---
 
@@ -190,6 +205,16 @@ uv run autoresearch-researcher diff --week 2026-W19
 
 Produces `diff.md` (changes classified ADD / FIX / REMOVE / REWORD / BALANCE) and a `feedback.md` template.
 
+### Ingest Weave feedback
+
+After annotating per-tool `stage2_profile_<tool>` calls in Weave:
+
+```bash
+uv run autoresearch-researcher feedback ingest --week 2026-W19
+```
+
+Produces `feedback_events.jsonl` and `prompt_improvement_notes.md`. This does not rewrite prompts automatically; it creates reviewable notes for improving `instructions/*.md`.
+
 ---
 
 ## Tests
@@ -230,7 +255,7 @@ instructions/
 
 ## v1 non-goals (deferred to v2+)
 
-- Auto-feeding `feedback.md` back into system prompts
+- Auto-rewriting prompts without human review
 - GitHub releases / RSS notifications
 - HTML / dashboard output
-- Self-learning agents
+- Fully self-learning agents

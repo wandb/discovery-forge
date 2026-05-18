@@ -40,18 +40,26 @@ Week identifier (e.g. `2026-W19`). Passed via CLI; cron-friendly.
 ## Output structure
 
 ```
-weekly_runs/2026-W19/
-├── draft.md                  # main publishable draft
-├── comparison_table.md       # standalone comparison table
-├── tools/
-│   ├── {tool_slug}.md        # per-tool detail card
-│   └── ...
-├── sources.jsonl             # all citation sources
-├── run_metadata.json         # run info (timestamp, model, tokens, cost)
-└── (filled in by human)
-    ├── final.md              # human-edited publish version
-    ├── feedback.md           # structured feedback
-    └── diff.md               # auto draft vs final diff
+weekly_runs/
+├── _registry/
+│   ├── tools.jsonl                  # global tool index
+│   ├── profiles/{tool_slug}.md      # canonical per-tool detail cards
+│   └── sources.jsonl                # cumulative citation sources
+└── 2026-W19/
+    ├── run_metadata.json            # run_id, prompt hashes, timestamps, tokens, cost, counts
+    ├── _candidates.jsonl            # Discovery output
+    ├── _profile_runs.jsonl          # per-tool Weave trace links
+    ├── _new_candidates.jsonl        # tools first profiled this week
+    ├── _updated_tools.jsonl         # known tools whose metadata changed
+    ├── highlights.md                # weekly delta summary
+    ├── draft.md                     # main publishable draft
+    ├── comparison_table.md          # standalone comparison table
+    ├── feedback_events.jsonl        # optional, after Weave feedback ingest
+    ├── prompt_improvement_notes.md  # optional, after Weave feedback ingest
+    └── (filled in by human)
+        ├── final.md                 # human-edited publish version
+        ├── feedback.md              # structured feedback
+        └── diff.md                  # auto draft vs final diff
 ```
 
 ## Publish format (draft.md)
@@ -86,18 +94,22 @@ Orchestrator (CLI entrypoint)
   │
   ├─→ DiscoveryAgent
   │     input: PRD's IN/OUT scope definition
-  │     tools: search_web (Perplexity), save_candidate_tool
-  │     output: tools/_candidates.jsonl
+  │     tools: search_web (Perplexity), is_known_tool, save_candidate_tool
+  │     trace: stage1_discovery
+  │     trace output: Markdown table of discovered/rejected candidates
+  │     output: _candidates.jsonl
   │
   ├─→ ProfilerAgent (one call per tool)
   │     input: one candidate tool
   │     tools: search_web (Perplexity), fetch_github_metadata, save_tool_profile
+  │     trace: stage2_profile_{slug} → ProfilerAgent
   │     scope filter: self-checks "is this really experiment automation?"
-  │     output: tools/{slug}.md
+  │     output: _registry/profiles/{slug}.md + _profile_runs.jsonl
   │
   └─→ WriterAgent
-        input: all tools/{slug}.md
-        tools: save_draft, save_comparison_table
+        input: all _registry/profiles/{slug}.md + weekly delta files
+        tools: read_tool_profiles, get_tool_body, read_highlights, save_draft, save_comparison_table
+        trace: stage3_writer
         output: draft.md, comparison_table.md
 ```
 
@@ -120,7 +132,7 @@ No agent-to-agent handoffs — the orchestrator owns flow control. Simpler debug
 
 ### US3: DiscoveryAgent
 - [x] Scope definition lives in `instructions/discovery.md`
-- [x] Web searches per category via WebSearchTool
+- [x] Web searches per category via Perplexity-backed `search_web`
 - [x] **Search queries use category / general terms only**, no specific tool-name seeds
 - [x] N candidates saved to `_candidates.jsonl` (name, URL, one-line description, discovery category)
 - [x] Obvious OUT categories (e.g., deep-research products) excluded on discovery with reason recorded
@@ -135,11 +147,11 @@ No agent-to-agent handoffs — the orchestrator owns flow control. Simpler debug
   - Interface / resource requirements
   - Known limitations (prefer primary sources)
 - [x] **Self scope filter**: post-collection, verify "does this match the experiment-automation definition?", reject on mismatch
-- [x] Output as `tools/{slug}.md` (YAML front-matter + body)
+- [x] Output as `_registry/profiles/{slug}.md` (YAML front-matter + body)
 - [x] Every factual claim has a registered source (sources.jsonl)
 
 ### US5: WriterAgent
-- [x] Read all `tools/*.md` and synthesize
+- [x] Read all `_registry/profiles/*.md` and synthesize
 - [x] Auto-generate the comparison table (every column filled, blanks shown as "unknown")
 - [x] Use-case matrix (single GPU / multi-GPU / enterprise / data-private, etc.)
 - [x] Identify "this week's highlights" (compare with prior week if folder exists, else "first issue")
@@ -157,9 +169,11 @@ No agent-to-agent handoffs — the orchestrator owns flow control. Simpler debug
   - Outputs from completed stages are preserved
 - [x] **W&B Weave tracing** enabled
   - One call to `weave.init(project="autoresearch-researcher")`
-  - `set_trace_processors([WeaveTracingProcessor()])` to auto-capture OpenAI Agents
-  - Tag each weekly run via `weave.attributes({"week": week_id})`
-  - All LLM calls, function tools, and agent handoffs flow into the trace tree automatically
+  - `set_trace_processors([AutoresearchWeaveTracingProcessor()])` to auto-capture and cleanly parent OpenAI Agents traces
+  - Tag each weekly run and tool profile call with `week` and `run_id`
+  - Each candidate profiling run is an independent `stage2_profile_{slug}` root call for human review
+  - Stage 2 trace tree should read as `stage2_profile_{slug} → ProfilerAgent → LLM/tool calls`
+  - `_profile_runs.jsonl` links `slug`, `status`, `workflow_name`, `agent_trace_id`, `weave_call_id`, `trace_url`, and prompt hash
 - [x] Cumulative token / cost recorded in `run_metadata.json` (Weave dashboard separately, local copy here)
 - [x] CLI prints the Weave trace URL (clickable for post-run review)
 
@@ -173,6 +187,15 @@ No agent-to-agent handoffs — the orchestrator owns flow control. Simpler debug
 ### US9: Re-run safety
 - [x] `--rerun` allows re-running the same week (previous folder backed up)
 - [x] On partial failure, resume from `_candidates.jsonl` starting at ProfilerAgent
+
+### US10: Per-tool feedback ingestion
+- [x] CLI subcommand: `autoresearch-researcher feedback ingest --week 2026-W19`
+  - Reads `_profile_runs.jsonl`
+  - Fetches Weave feedback for each `weave_call_id`
+  - Writes `feedback_events.jsonl`
+  - Writes `prompt_improvement_notes.md`
+- [x] Prompt versions are tracked via instruction-file hashes in `run_metadata.json` and per-tool profile run rows
+- [x] Prompt edits are not applied automatically; the maintainer reviews notes before changing `instructions/*.md`
 
 ## feedback.md template (auto-generated by US8)
 
@@ -214,6 +237,7 @@ Build pass criteria:
   - comparison_table.md has every column filled (unknown OK)
   - Citation integrity passes
   - No obvious OUT tools (e.g., GPT-Researcher, Perplexity) end up in the result
+  - `_profile_runs.jsonl` records one reviewable profiling row per dry-run tool
 
 **Intentionally out of scope to measure**: the "quality" of the publish output. Human review judges that. v1 verifies "the pipeline works".
 
@@ -225,9 +249,9 @@ Once every User Story checkbox is ✅, the smoke test fully passes, and one real
 
 ## v1 explicit non-goals (deferred to v2+)
 
-- Auto-feeding feedback.md back into system prompts
+- Auto-rewriting prompts from Weave feedback without human review
 - Auto-alerts for new releases / updates (RSS, GitHub releases watching)
 - HTML / dashboard output
 - Multilingual output
 - Per-tool stars-over-time graphs
-- Self-learning agents / RL
+- Fully self-learning agents / RL

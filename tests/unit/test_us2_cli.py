@@ -88,3 +88,9 @@ def test_diff_subcommand_exists():
     result = runner.invoke(app, ["diff", "--help"])
     assert result.exit_code == 0
     assert "week" in result.output.lower()
+
+
+def test_feedback_ingest_subcommand_exists():
+    result = runner.invoke(app, ["feedback", "ingest", "--help"])
+    assert result.exit_code == 0
+    assert "week" in result.output.lower()

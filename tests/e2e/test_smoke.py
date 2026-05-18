@@ -38,6 +38,7 @@ async def test_e2e_smoke_dry_run(tmp_path):
     assert (tmp_path / "draft.md").exists(), "draft.md must exist"
     assert (tmp_path / "comparison_table.md").exists(), "comparison_table.md must exist"
     assert (tmp_path / "_candidates.jsonl").exists(), "_candidates.jsonl must exist"
+    assert (tmp_path / "_profile_runs.jsonl").exists(), "_profile_runs.jsonl must exist"
 
     # ── 2. tools/ has ≥3 in-scope profiles ────────────────────────────────────
     tools_dir = tmp_path / "tools"
@@ -77,6 +78,19 @@ async def test_e2e_smoke_dry_run(tmp_path):
         assert "name" in data and "url" in data and "category" in data
         candidate_count += 1
     assert candidate_count >= 3, f"Expected ≥3 candidates, found {candidate_count}"
+
+    # ── 7. Per-tool trace contract is recorded ────────────────────────────────
+    profile_runs = [
+        json.loads(line)
+        for line in (tmp_path / "_profile_runs.jsonl").read_text().splitlines()
+        if line.strip()
+    ]
+    assert len(profile_runs) >= 3
+    for run in profile_runs:
+        assert run["run_id"]
+        assert run["status"] == "accepted"
+        assert "weave_call_id" in run
+        assert "profiler_prompt_hash" in run
 
 
 @pytest.mark.expensive
