@@ -8,7 +8,7 @@ from autoresearch_researcher.agents.discovery import load_instructions
 from autoresearch_researcher.schemas.tool_profile import RejectedProfile, ToolProfile
 from autoresearch_researcher.tools.github import fetch_github_metadata
 from autoresearch_researcher.tools.persistence import save_tool_profile
-from autoresearch_researcher.tools.search import perplexity_search
+from autoresearch_researcher.tools.search import DEFAULT_SEARCH_BACKEND, SearchBackend, search_web_query
 
 # Keywords that indicate a tool only searches/summarizes (not experiment automation)
 _DEEP_RESEARCH_KEYWORDS = [
@@ -72,7 +72,13 @@ def is_experiment_automation(
     return exp_count > 0
 
 
-def build_profiler_agent(output_dir: Path, registry=None, week: str | None = None) -> Agent:
+def build_profiler_agent(
+    output_dir: Path,
+    registry=None,
+    week: str | None = None,
+    search_backend: SearchBackend = DEFAULT_SEARCH_BACKEND,
+    instructions_override: str | None = None,
+) -> Agent:
     """Build and return the ProfilerAgent.
 
     If `registry` is provided, save_tool_profile routes the canonical profile
@@ -162,10 +168,10 @@ def build_profiler_agent(output_dir: Path, registry=None, week: str | None = Non
 
     @function_tool
     def search_web(query: str) -> str:
-        """Search the web using Perplexity AI. Returns a summary with source URLs."""
-        return perplexity_search(query)
+        """Search the web using the configured backend. Returns source URLs/snippets."""
+        return search_web_query(query, backend=search_backend)
 
-    instructions = load_instructions("profiler")
+    instructions = instructions_override or load_instructions("profiler")
 
     return Agent(
         name="ProfilerAgent",

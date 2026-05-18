@@ -4,11 +4,14 @@ import asyncio
 import json
 import sys
 from datetime import datetime, timezone
+from enum import Enum
 from pathlib import Path
 from typing import Optional
 
 import typer
 from dotenv import load_dotenv
+
+from autoresearch_researcher.tools.search import DEFAULT_SEARCH_BACKEND
 
 load_dotenv()
 
@@ -21,12 +24,18 @@ DEFAULT_MAX_TOOLS = 12
 DEFAULT_MAX_COST_USD = 20.0
 
 
+class SearchBackendOption(str, Enum):
+    serpapi = "serpapi"
+    perplexity = "perplexity"
+
+
 async def run_briefing(
     week: str,
     output_dir: Path,
     max_tools: int,
     max_cost_usd: float,
     dry_run: bool,
+    search_backend: str,
 ) -> None:
     """Delegate to orchestrator.run_briefing."""
     from autoresearch_researcher.orchestrator import run_briefing as _run
@@ -36,6 +45,7 @@ async def run_briefing(
         max_tools=max_tools,
         max_cost_usd=max_cost_usd,
         dry_run=dry_run,
+        search_backend=search_backend,
     )
 
 
@@ -47,6 +57,11 @@ def run(
     max_cost_usd: float = typer.Option(DEFAULT_MAX_COST_USD, help="Abort if estimated cost exceeds this USD amount"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Skip actual LLM calls; validate pipeline only"),
     rerun: bool = typer.Option(False, "--rerun", help="Allow re-running a week that already has output"),
+    search_backend: SearchBackendOption = typer.Option(
+        SearchBackendOption(DEFAULT_SEARCH_BACKEND),
+        "--search-backend",
+        help="Search backend for Discovery and Profiler",
+    ),
 ) -> None:
     """Discover, profile, and write a weekly briefing for experiment-automation tools."""
     week_dir = output_dir / week
@@ -69,6 +84,7 @@ def run(
         "max_tools": max_tools,
         "max_cost_usd": max_cost_usd,
         "dry_run": dry_run,
+        "search_backend": search_backend.value,
     }
     metadata_path = week_dir / "run_metadata.json"
     metadata_path.write_text(json.dumps(metadata, indent=2))
@@ -91,6 +107,7 @@ def run(
                 max_tools=max_tools,
                 max_cost_usd=max_cost_usd,
                 dry_run=dry_run,
+                search_backend=search_backend.value,
             )
         )
     except Exception as e:
