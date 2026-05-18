@@ -26,7 +26,19 @@ def _feedback_to_dict(item: Any) -> dict[str, Any]:
     if isinstance(item, dict):
         return item
     data = {}
-    for key in ("id", "feedback_type", "payload", "created_at", "call_id", "wb_user_id"):
+    for key in (
+        "id",
+        "feedback_type",
+        "payload",
+        "created_at",
+        "call_id",
+        "weave_ref",
+        "runnable_ref",
+        "call_ref",
+        "annotation_ref",
+        "queue_id",
+        "wb_user_id",
+    ):
         value = getattr(item, key, None)
         if value is not None:
             data[key] = value

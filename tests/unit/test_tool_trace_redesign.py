@@ -173,6 +173,89 @@ def test_discovery_agent_output_contains_review_markdown():
 
     assert data["outputs"]["candidate_count"] == 1
     assert "Tool A" in data["outputs"]["review_markdown"]
+    assert data["outputs"]["candidate_names"] == ["Tool A"]
+    assert data["outputs"]["candidate_urls"] == ["https://example.com/tool-a"]
+
+
+def test_profile_review_output_for_accepted_profile():
+    from autoresearch_researcher.orchestrator import profile_review_output
+
+    output = profile_review_output({
+        "slug": "tool-a",
+        "name": "Tool A",
+        "autonomy_level": "Scientist",
+        "autonomy_rationale": "Runs experiment loops.",
+        "domains": ["ml"],
+        "license": "MIT",
+        "github_url": "https://github.com/example/tool-a",
+        "key_limitations": ["Needs GPU"],
+        "source_ids": [1],
+    }, status="accepted")
+
+    assert output["verdict"] == "accepted"
+    assert output["tool_name"] == "Tool A"
+    assert output["primary_url"] == "https://github.com/example/tool-a"
+    assert output["profile_path"] == "weekly_runs/_registry/profiles/tool-a.md"
+    assert "Tool Profile Review: Tool A" in output["profile_review_markdown"]
+    assert "Needs GPU" in output["profile_review_markdown"]
+
+
+def test_profile_review_output_for_rejected_profile():
+    from autoresearch_researcher.orchestrator import profile_review_output
+
+    output = profile_review_output({
+        "slug": "tool-a",
+        "name": "Tool A",
+        "rejection_reason": "Curated list only.",
+    }, status="rejected")
+
+    assert output["verdict"] == "rejected"
+    assert output["rejection_reason"] == "Curated list only."
+    assert "Curated list only." in output["profile_review_markdown"]
+
+
+def test_writer_review_output_contains_draft_and_table():
+    from autoresearch_researcher.orchestrator import writer_review_output
+
+    table = "| Tool Name | License |\n|---|---|\n| Tool A | MIT |\n"
+    output = writer_review_output(
+        draft_markdown="# Draft\n\nBody",
+        comparison_table_markdown=table,
+    )
+
+    assert output["tool_count"] == 1
+    assert output["draft_markdown"] == "# Draft\n\nBody"
+    assert "Writer Output Review" in output["writer_review_markdown"]
+    assert "| Tool A | MIT |" in output["writer_review_markdown"]
+
+
+def test_processor_trace_end_merges_registered_review_output(monkeypatch):
+    from autoresearch_researcher import orchestrator
+    from autoresearch_researcher.orchestrator import AutoresearchWeaveTracingProcessor
+
+    finished = {}
+
+    class FakeClient:
+        def finish_call(self, call, output):
+            finished["call"] = call
+            finished["output"] = output
+
+    processor = AutoresearchWeaveTracingProcessor()
+    processor._trace_data["trace-1"] = {"metrics": {}, "metadata": {"stage": "profiling"}}
+    processor._trace_calls["trace-1"] = object()
+    processor._profiler_profiles["trace-1"] = {
+        "slug": "tool-a",
+        "name": "Tool A",
+        "github_url": "https://github.com/example/tool-a",
+    }
+    monkeypatch.setattr(orchestrator, "get_weave_client", lambda: FakeClient())
+    trace = SimpleNamespace(trace_id="trace-1", name="stage2_profile_tool-a")
+
+    processor.on_trace_end(trace)
+
+    assert finished["output"]["status"] == "completed"
+    assert finished["output"]["verdict"] == "accepted"
+    assert "profile_review_markdown" in finished["output"]
 
 
 def test_parse_tool_input_accepts_json_string():
@@ -232,6 +315,8 @@ async def test_dry_run_writes_profile_runs_and_prompt_hashes(tmp_path):
     assert metadata["profiled_count"] == 3
     assert metadata["accepted_count"] == 3
     assert metadata["rejected_count"] == 0
+    assert metadata["search_backend"] == "serpapi"
+    assert metadata["prompt_refs"] == {"discovery": None, "profiler": None, "writer": None}
     assert set(metadata["prompt_hashes"]) == {"discovery", "profiler", "writer"}
 
     rows = [json.loads(line) for line in (tmp_path / "_profile_runs.jsonl").read_text().splitlines()]
@@ -239,6 +324,7 @@ async def test_dry_run_writes_profile_runs_and_prompt_hashes(tmp_path):
     assert {row["status"] for row in rows} == {"accepted"}
     assert all(row["run_id"] == metadata["run_id"] for row in rows)
     assert all(row["workflow_name"].startswith("stage2_profile_") for row in rows)
+    assert all(row["search_backend"] == "serpapi" for row in rows)
 
 
 def test_feedback_ingest_writes_events_and_notes(tmp_path):

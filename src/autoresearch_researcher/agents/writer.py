@@ -134,7 +134,12 @@ def generate_comparison_table(profiles: list[dict]) -> str:
     return header + "\n".join(rows) + "\n"
 
 
-def build_writer_agent(output_dir: Path, week: str, registry=None) -> "Agent":
+def build_writer_agent(
+    output_dir: Path,
+    week: str,
+    registry=None,
+    instructions_override: str | None = None,
+) -> "Agent":
     """Build and return the WriterAgent.
 
     If `registry` is provided, profiles are read from the global registry
@@ -180,7 +185,7 @@ def build_writer_agent(output_dir: Path, week: str, registry=None) -> "Agent":
             return ""
         return path.read_text()
 
-    instructions = load_instructions("writer")
+    instructions = instructions_override or load_instructions("writer")
 
     return Agent(
         name="WriterAgent",
