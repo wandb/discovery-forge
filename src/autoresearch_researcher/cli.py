@@ -17,7 +17,9 @@ load_dotenv()
 
 app = typer.Typer(name="autoresearch-researcher", help="Weekly tool briefing agent for experiment automation research.")
 feedback_app = typer.Typer(help="Ingest human feedback from Weave traces.")
+improve_app = typer.Typer(help="Generate prompt-only improvement proposals.")
 app.add_typer(feedback_app, name="feedback")
+app.add_typer(improve_app, name="improve")
 
 DEFAULT_OUTPUT_DIR = Path("weekly_runs")
 DEFAULT_MAX_TOOLS = 12
@@ -178,3 +180,65 @@ def feedback_ingest(
         raise typer.Exit(code=2)
 
     typer.echo(f"Ingested {len(events)} feedback events into {week_dir / 'feedback_events.jsonl'}")
+
+
+@improve_app.command("propose")
+def improve_propose(
+    week: str = typer.Option(..., help="ISO week identifier, e.g. 2026-W19"),
+    output_dir: Path = typer.Option(DEFAULT_OUTPUT_DIR, help="Base output directory"),
+) -> None:
+    """Run the proposer agent to synthesize a prompt-only improvement plan."""
+    week_dir = output_dir / week
+    if not week_dir.exists():
+        typer.echo(f"ERROR: {week_dir} not found.", err=True)
+        raise typer.Exit(code=1)
+
+    try:
+        from autoresearch_researcher.orchestrator import init_observability
+        from autoresearch_researcher.tools.improvement import propose_prompt_improvements
+
+        init_observability(week_id=week)
+        result = propose_prompt_improvements(week_dir)
+        plan_path = Path(result["plan_path"])
+    except Exception as e:
+        typer.echo(f"Improvement proposal failed: {e}", err=True)
+        raise typer.Exit(code=2)
+
+    typer.echo(f"Prompt improvement plan written to {plan_path}")
+
+
+@improve_app.command("apply")
+def improve_apply(
+    week: str = typer.Option(..., help="ISO week identifier, e.g. 2026-W19"),
+    output_dir: Path = typer.Option(DEFAULT_OUTPUT_DIR, help="Base output directory"),
+) -> None:
+    """Run the applier agent to rewrite instructions/*.md from the saved plan."""
+    week_dir = output_dir / week
+    if not week_dir.exists():
+        typer.echo(f"ERROR: {week_dir} not found.", err=True)
+        raise typer.Exit(code=1)
+
+    try:
+        from autoresearch_researcher.orchestrator import init_observability
+        from autoresearch_researcher.tools.improvement import apply_prompt_improvements_traced
+
+        init_observability(week_id=week)
+        result = apply_prompt_improvements_traced(week_dir)
+        plan_path = Path(result["plan_path"])
+        changed_paths = [Path(path) for path in result["changed_prompt_files"]]
+        prompt_refs = result.get("prompt_refs") or {}
+    except Exception as e:
+        typer.echo(f"Improvement apply failed: {e}", err=True)
+        raise typer.Exit(code=2)
+
+    typer.echo(f"Prompt improvement plan: {plan_path}")
+    if changed_paths:
+        typer.echo("Updated prompt files:")
+        for path in changed_paths:
+            typer.echo(f"- {path}")
+        if prompt_refs:
+            typer.echo("Published Weave prompt refs:")
+            for agent_name, ref in prompt_refs.items():
+                typer.echo(f"- {agent_name}: {ref}")
+    else:
+        typer.echo("No prompt files updated.")
