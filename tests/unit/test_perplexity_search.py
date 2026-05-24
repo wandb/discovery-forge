@@ -1,4 +1,4 @@
-"""Perplexity search tool tests."""
+"""Search backend tests."""
 
 import json
 from pathlib import Path
@@ -10,6 +10,92 @@ ROOT = Path(__file__).parent.parent.parent
 
 
 # ── PerplexitySearchTool unit tests (mocked HTTP) ─────────────────────────────
+
+
+def test_default_search_backend_is_serpapi():
+    from autoresearch_researcher.tools.search import DEFAULT_SEARCH_BACKEND
+
+    assert DEFAULT_SEARCH_BACKEND == "serpapi"
+
+
+def test_serpapi_search_returns_normalized_results(monkeypatch):
+    from autoresearch_researcher.tools.search import serpapi_search
+
+    monkeypatch.setenv("SERPAPI_API_KEY", "test-key")
+    mock_response = {
+        "organic_results": [{
+            "title": "ToolX",
+            "link": "https://github.com/x/toolx",
+            "snippet": "ToolX runs ML experiments.",
+            "date": "May 2026",
+            "source": "GitHub",
+        }],
+        "related_questions": [{
+            "question": "What is ToolX?",
+            "snippet": "An experiment agent.",
+            "link": "https://example.com/toolx",
+        }],
+    }
+    with patch("autoresearch_researcher.tools.search.httpx.Client") as MockClient:
+        mock_client = MockClient.return_value.__enter__.return_value
+        mock_client.get.return_value.json.return_value = mock_response
+        mock_client.get.return_value.raise_for_status = MagicMock()
+
+        result = serpapi_search("ToolX autonomous experiment agent")
+
+    assert "Search backend: serpapi" in result
+    assert "ToolX" in result
+    assert "https://github.com/x/toolx" in result
+    assert "May 2026" in result
+
+
+def test_serpapi_search_uses_serpapi_endpoint(monkeypatch):
+    from autoresearch_researcher.tools.search import serpapi_search
+
+    monkeypatch.setenv("SERPAPI_API_KEY", "test-key")
+    with patch("autoresearch_researcher.tools.search.httpx.Client") as MockClient:
+        mock_client = MockClient.return_value.__enter__.return_value
+        mock_client.get.return_value.json.return_value = {"organic_results": []}
+        mock_client.get.return_value.raise_for_status = MagicMock()
+
+        serpapi_search("test query")
+
+        call_args = mock_client.get.call_args
+        url = call_args.args[0] if call_args.args else call_args.kwargs.get("url", "")
+        params = call_args.kwargs.get("params", {})
+        assert "serpapi.com" in url
+        assert params["q"] == "test query"
+        assert params["engine"] == "google"
+
+
+def test_serpapi_search_without_api_key_returns_error(monkeypatch):
+    from autoresearch_researcher.tools.search import serpapi_search
+
+    monkeypatch.delenv("SERPAPI_API_KEY", raising=False)
+
+    result = serpapi_search("test query")
+    assert "SERPAPI_API_KEY" in result
+
+
+def test_search_web_query_routes_to_serpapi(monkeypatch):
+    from autoresearch_researcher.tools import search
+
+    monkeypatch.setattr(search, "serpapi_search", lambda query: f"serp:{query}")
+    assert search.search_web_query("abc", backend="serpapi") == "serp:abc"
+
+
+def test_search_web_query_routes_to_perplexity(monkeypatch):
+    from autoresearch_researcher.tools import search
+
+    monkeypatch.setattr(search, "perplexity_search", lambda query: f"pplx:{query}")
+    assert search.search_web_query("abc", backend="perplexity") == "pplx:abc"
+
+
+def test_search_web_query_rejects_unknown_backend():
+    from autoresearch_researcher.tools.search import search_web_query
+
+    result = search_web_query("abc", backend="unknown")
+    assert "unsupported search backend" in result.lower()
 
 def test_perplexity_search_returns_string():
     from autoresearch_researcher.tools.search import perplexity_search
@@ -109,16 +195,16 @@ def test_perplexity_search_without_api_key_returns_error(monkeypatch):
     assert "PERPLEXITY_API_KEY" in result or "not configured" in result.lower() or "error" in result.lower()
 
 
-# ── Discovery agent uses Perplexity ──────────────────────────────────────────
+# ── Discovery agent uses configured search backend ──────────────────────────
 
-def test_discovery_agent_has_perplexity_tool():
+def test_discovery_agent_has_search_tool():
     from autoresearch_researcher.agents.discovery import build_discovery_agent
     agent = build_discovery_agent(output_dir=Path("/tmp"))
     tool_names = [t.name if hasattr(t, "name") else str(t) for t in agent.tools]
-    # Should have perplexity_search tool (not the OpenAI built-in WebSearchTool)
-    assert any("perplexity" in name.lower() or "search" in name.lower() for name in tool_names)
+    assert any("search" in name.lower() for name in tool_names)
 
 
-def test_env_example_has_perplexity_key():
+def test_env_example_has_search_backend_keys():
     env_example = (ROOT / ".env.example").read_text()
+    assert "SERPAPI_API_KEY" in env_example
     assert "PERPLEXITY_API_KEY" in env_example

@@ -8,7 +8,7 @@ from agents import Agent, function_tool
 
 from autoresearch_researcher.schemas.candidate import Candidate, RejectedCandidate
 from autoresearch_researcher.tools.persistence import save_candidate, save_rejected_candidate
-from autoresearch_researcher.tools.search import perplexity_search
+from autoresearch_researcher.tools.search import DEFAULT_SEARCH_BACKEND, SearchBackend, search_web_query
 
 INSTRUCTIONS_DIR = Path(__file__).parent.parent / "instructions"
 
@@ -19,7 +19,13 @@ def load_instructions(agent_name: str) -> str:
     return path.read_text()
 
 
-def build_discovery_agent(output_dir: Path, max_tools: int = 12, registry=None) -> Agent:
+def build_discovery_agent(
+    output_dir: Path,
+    max_tools: int = 12,
+    registry=None,
+    search_backend: SearchBackend = DEFAULT_SEARCH_BACKEND,
+    instructions_override: str | None = None,
+) -> Agent:
     """Build and return the DiscoveryAgent.
 
     If `registry` is provided, the agent gets an `is_known_tool` tool that
@@ -62,8 +68,8 @@ def build_discovery_agent(output_dir: Path, max_tools: int = 12, registry=None) 
 
     @function_tool
     def search_web(query: str) -> str:
-        """Search the web using Perplexity AI. Returns a summary with source URLs."""
-        return perplexity_search(query)
+        """Search the web using the configured backend. Returns source URLs/snippets."""
+        return search_web_query(query, backend=search_backend)
 
     @function_tool
     def is_known_tool(url: str) -> str:
@@ -72,7 +78,7 @@ def build_discovery_agent(output_dir: Path, max_tools: int = 12, registry=None) 
             return f"known: {url} is already in the global registry — skip it."
         return f"new: {url} is not in the registry yet — proceed to save_candidate."
 
-    instructions = load_instructions("discovery").replace("{max_tools}", str(max_tools))
+    instructions = instructions_override or load_instructions("discovery").replace("{max_tools}", str(max_tools))
 
     tools = [search_web, save_candidate_tool, save_rejected_candidate_tool]
     if registry is not None:

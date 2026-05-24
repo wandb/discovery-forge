@@ -72,6 +72,27 @@ def test_run_passes_max_tools_and_cost(tmp_path):
         assert call_kwargs["max_cost_usd"] == 10.0
 
 
+def test_run_passes_search_backend(tmp_path):
+    with patch("autoresearch_researcher.cli.run_briefing", new_callable=AsyncMock) as mock_run:
+        mock_run.return_value = None
+        runner.invoke(app, [
+            "run", "--week", "2026-W99",
+            "--search-backend", "perplexity",
+            "--output-dir", str(tmp_path),
+        ])
+        call_kwargs = mock_run.call_args.kwargs
+        assert call_kwargs["search_backend"] == "perplexity"
+
+
+def test_run_metadata_records_default_search_backend(tmp_path):
+    with patch("autoresearch_researcher.cli.run_briefing", new_callable=AsyncMock) as mock_run:
+        mock_run.return_value = None
+        runner.invoke(app, ["run", "--week", "2026-W99", "--output-dir", str(tmp_path)])
+        metadata_path = tmp_path / "2026-W99" / "run_metadata.json"
+        data = json.loads(metadata_path.read_text())
+        assert data["search_backend"] == "serpapi"
+
+
 def test_run_dry_run_flag(tmp_path):
     with patch("autoresearch_researcher.cli.run_briefing", new_callable=AsyncMock) as mock_run:
         mock_run.return_value = None
@@ -86,5 +107,11 @@ def test_run_dry_run_flag(tmp_path):
 
 def test_diff_subcommand_exists():
     result = runner.invoke(app, ["diff", "--help"])
+    assert result.exit_code == 0
+    assert "week" in result.output.lower()
+
+
+def test_feedback_ingest_subcommand_exists():
+    result = runner.invoke(app, ["feedback", "ingest", "--help"])
     assert result.exit_code == 0
     assert "week" in result.output.lower()

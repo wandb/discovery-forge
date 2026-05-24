@@ -35,11 +35,18 @@ Ask yourself: "Does this tool *execute experiments* or *autonomously generate co
 
 Tools in the "deep research" category (web search + summarization pipelines) are OUT OF SCOPE. Reject them with a clear rejection reason.
 
+Also reject curated lists, directories, 'awesome-*' repositories, and resource collections even if they are about autonomous science, self-driving labs, or AI for science.
+
+If the repository mainly enumerates other projects or resources and does not itself execute experiments, run code, control equipment, or generate outputs from experiments, it is OUT OF SCOPE.
+
+Use a clear rejection reason such as: "This is a curated list/resource index, not an experiment-automation system, so it must be rejected."
+
 **ACCEPT the tool** only if it:
 - Executes ML training runs, simulations, or lab procedures autonomously
 - Writes AND runs experiment code in a loop
 - Controls robotic/laboratory equipment
 - Generates papers or reports from results of real experiments it ran
+- Is a real system/tool, not merely a list, directory, or roundup of related resources
 
 ## Output
 
@@ -52,3 +59,4 @@ If the tool fails the scope filter, call `save_rejected_profile` with a clear `r
 For every factual claim, record the source URL. Call `save_source` with the URL, title, and fetched timestamp. Use the returned source ID in `source_ids` when saving the profile.
 
 Do not invent or hallucinate facts. If information cannot be verified, use `"unknown"`.
+
