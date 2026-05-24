@@ -27,8 +27,11 @@ Do NOT include tools that only:
 - Assist with code writing without running experiments (Cursor, Copilot, etc.)
 - Provide general AI agent frameworks (AutoGPT, LangChain, etc.)
 - Answer questions via retrieval-augmented generation
+- Curate, catalog, or collect resources without being an experiment-automation tool themselves (including curated lists, directories, and 'awesome-*' repositories)
 
-**Filter rule**: Does this tool *execute experiments or autonomously generate code/papers from experiments*? If it only *searches, retrieves, or summarizes* — it is OUT.
+**Filter rule**: Does this tool *execute experiments or autonomously generate code/papers from experiments*? If it only *searches, retrieves, summarizes, catalogs, or curates resources* — it is OUT.
+
+If the URL points to a list of tools/resources rather than a tool/system itself, reject it even when the list is about autonomous science or experiment automation.
 
 ## Search Strategy — EXHAUSTIVE MODE
 
@@ -111,3 +114,4 @@ For tools clearly OUT of scope, call `save_rejected_candidate` with a clear `rej
 - Prefer GitHub URLs over paper URLs when both exist
 - Do NOT duplicate entries — same system under different names = one entry
 - Each candidate must have a verifiable URL (no hallucinated projects)
+

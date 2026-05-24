@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from typer.testing import CliRunner
@@ -20,6 +21,18 @@ def _event(*, name: str, note: str, slug: str | None = None) -> dict:
         "weave_call_id": "call-1",
         "feedback": {
             "feedback_type": "wandb.annotation.ProfilerAgentScorer",
+            "payload": {"value": note},
+        },
+    }
+
+
+def _targeted_event(*, target: str, week: int, note: str, call_id: str = "call-1") -> dict:
+    return {
+        "week": f"2026-W{week}",
+        "weave_call_id": call_id,
+        "target_prompt": target.lower(),
+        "feedback": {
+            "feedback_type": f"wandb.annotation.W{week}_{target}",
             "payload": {"value": note},
         },
     }
@@ -51,6 +64,107 @@ def test_load_feedback_context_reads_all_artifacts(tmp_path):
     assert context.feedback_events[0]["name"] == "Tool A"
 
 
+def test_annotation_target_prompt_routes_week_scoped_annotations():
+    from autoresearch_researcher.tools.feedback import annotation_target_prompt
+
+    assert annotation_target_prompt(
+        {"feedback_type": "wandb.annotation.W99_Discovery"},
+        "2026-W99",
+    ) == "discovery"
+    assert annotation_target_prompt(
+        {"feedback_type": "wandb.annotation.W99_Profiler"},
+        "2026-W99",
+    ) == "profiler"
+    assert annotation_target_prompt(
+        {"feedback_type": "wandb.annotation.W98_Discovery"},
+        "2026-W99",
+    ) is None
+    assert annotation_target_prompt(
+        {"annotation_queue_name": "W99_Profiler"},
+        "2026-W99",
+    ) == "profiler"
+
+
+def test_enrich_feedback_resolves_annotation_queue_name():
+    from autoresearch_researcher.tools.feedback import enrich_feedback_with_queue_name
+
+    class FakeServer:
+        def annotation_queue_read(self, req):
+            assert req.project_id == "entity/project"
+            assert req.queue_id == "queue-1"
+            return SimpleNamespace(queue=SimpleNamespace(name="W99_Profiler"))
+
+    client = SimpleNamespace(
+        server=FakeServer(),
+        _project_id=lambda: "entity/project",
+    )
+
+    feedback = enrich_feedback_with_queue_name(
+        client,
+        {"queue_id": "queue-1", "feedback_type": "wandb.annotation.QualityReviewer"},
+    )
+
+    assert feedback["annotation_queue_name"] == "W99_Profiler"
+
+
+def test_feedback_ingest_collects_week_scoped_discovery_and_profiler_annotations(tmp_path):
+    from autoresearch_researcher.tools.feedback import ingest_feedback
+
+    profile_run = {
+        "week": "2026-W99",
+        "run_id": "run-1",
+        "slug": "tool-a",
+        "name": "Tool A",
+        "url": "https://example.com/tool-a",
+        "weave_call_id": "profile-call",
+    }
+    (tmp_path / "_profile_runs.jsonl").write_text(json.dumps(profile_run) + "\n")
+
+    feedback_items = [
+        SimpleNamespace(
+            id="fb-discovery",
+            feedback_type="wandb.annotation.W99_Discovery",
+            payload={"value": "Discovery picked the wrong URL."},
+            call_id="discovery-call",
+        ),
+        SimpleNamespace(
+            id="fb-profiler",
+            feedback_type="wandb.annotation.W99_Profiler",
+            payload={"value": "Profiler should reject this scoped-out tool."},
+            call_id="profile-call",
+        ),
+        SimpleNamespace(
+            id="fb-other-week",
+            feedback_type="wandb.annotation.W98_Discovery",
+            payload={"value": "Old week feedback."},
+            call_id="old-call",
+        ),
+    ]
+
+    class FakeServer:
+        def annotation_queue_read(self, req):
+            if req.queue_id == "queue-profiler":
+                return SimpleNamespace(queue=SimpleNamespace(name="W99_Profiler"))
+            return SimpleNamespace(queue=SimpleNamespace(name="OtherQueue"))
+
+    feedback_items[1].feedback_type = "wandb.annotation.QualityReviewer"
+    feedback_items[1].queue_id = "queue-profiler"
+    client = SimpleNamespace(
+        get_feedback=lambda: feedback_items,
+        server=FakeServer(),
+        _project_id=lambda: "entity/project",
+    )
+
+    events = ingest_feedback(tmp_path, client)
+
+    assert len(events) == 2
+    assert {event["target_prompt"] for event in events} == {"discovery", "profiler"}
+    assert {event["weave_call_id"] for event in events} == {"discovery-call", "profile-call"}
+    notes = (tmp_path / "prompt_improvement_notes.md").read_text()
+    assert "`discovery.md`: 1" in notes
+    assert "`profiler.md`: 1" in notes
+
+
 def test_render_proposer_input_includes_feedback_and_current_prompts(tmp_path):
     from autoresearch_researcher.tools.improvement import (
         load_feedback_context,
@@ -78,6 +192,42 @@ def test_render_proposer_input_includes_feedback_and_current_prompts(tmp_path):
     assert "Current Prompt: profiler.md" in rendered
     assert "Current Prompt: writer.md" in rendered
     assert "Seed profiler rules." in rendered
+
+
+def test_render_proposer_input_separates_discovery_and_profiler_feedback(tmp_path):
+    from autoresearch_researcher.tools.improvement import (
+        load_feedback_context,
+        render_proposer_input,
+    )
+
+    instructions_dir = tmp_path / "instructions"
+    _bootstrap_instructions(instructions_dir)
+    week_dir = tmp_path / "2026-W99"
+    _write_feedback(
+        week_dir,
+        [
+            _targeted_event(
+                target="Discovery",
+                week=99,
+                note="Discovery should reject awesome-list URLs before profiling.",
+            ),
+            _targeted_event(
+                target="Profiler",
+                week=99,
+                note="Profiler should reject tools that only summarize papers.",
+            ),
+        ],
+    )
+
+    context = load_feedback_context(week_dir)
+    rendered = render_proposer_input(context, instructions_dir=instructions_dir)
+
+    assert "Discovery-targeted Feedback" in rendered
+    assert "Profiler-targeted Feedback" in rendered
+    assert "may only be used to propose edits to `discovery.md`" in rendered
+    assert "may only be used to propose edits to `profiler.md`" in rendered
+    assert "Target prompt: `discovery.md`" in rendered
+    assert "Target prompt: `profiler.md`" in rendered
 
 
 def test_render_proposer_input_handles_no_feedback(tmp_path):

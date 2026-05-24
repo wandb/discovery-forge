@@ -63,11 +63,17 @@ def render_proposer_input(
     instructions_dir: Path = INSTRUCTIONS_DIR,
 ) -> str:
     """Render the user message passed to PromptImprovementProposerAgent."""
+    routed_events = _feedback_events_by_target(context.feedback_events)
     lines = [
         f"# Week: {context.week}",
         "",
         "You are improving prompt-only behavior for the autoresearch pipeline.",
         "Read every feedback event, then call `save_improvement_plan` exactly once.",
+        "",
+        "Week-scoped annotation routing is mandatory:",
+        "- `wandb.annotation.W{number}_Discovery` feedback may only justify edits to `discovery.md`.",
+        "- `wandb.annotation.W{number}_Profiler` feedback may only justify edits to `profiler.md`.",
+        "- Do not use Discovery feedback to edit `profiler.md`, and do not use Profiler feedback to edit `discovery.md`.",
         "",
         "## Weekly Context",
         f"- Candidates discovered: {len(context.candidates)}",
@@ -82,8 +88,28 @@ def render_proposer_input(
     if not context.feedback_events:
         lines.append("No feedback events were found. Produce a plan that recommends no changes.")
     else:
-        for idx, event in enumerate(context.feedback_events, start=1):
-            lines.extend(_render_feedback_event(idx, event))
+        _extend_targeted_feedback_section(
+            lines,
+            title="Discovery-targeted Feedback",
+            target_prompt="discovery",
+            events=routed_events["discovery"],
+        )
+        _extend_targeted_feedback_section(
+            lines,
+            title="Profiler-targeted Feedback",
+            target_prompt="profiler",
+            events=routed_events["profiler"],
+        )
+        if routed_events["unscoped"]:
+            lines.extend([
+                "## Unscoped Legacy Feedback",
+                "",
+                "These events do not use the `W{number}_Discovery` / `W{number}_Profiler` naming convention.",
+                "Do not use them to justify prompt edits. Treat them as historical context only.",
+                "",
+            ])
+            for idx, event in enumerate(routed_events["unscoped"], start=1):
+                lines.extend(_render_feedback_event(idx, event))
 
     lines.extend([
         "## Current Prompt: discovery.md",
@@ -343,6 +369,12 @@ def _render_feedback_event(index: int, event: dict[str, Any]) -> list[str]:
     payload = _feedback_payload(event)
     value = payload.get("value")
     feedback_text = value if value is not None else payload
+    target_prompt = event.get("target_prompt")
+    target_line = (
+        f"- Target prompt: `{target_prompt}.md`"
+        if target_prompt
+        else "- Target prompt: `unscoped`"
+    )
     return [
         f"### Feedback {index}: {event.get('name') or event.get('slug') or 'unknown item'}",
         "",
@@ -350,9 +382,46 @@ def _render_feedback_event(index: int, event: dict[str, Any]) -> list[str]:
         f"- Tool slug: `{event.get('slug')}`",
         f"- Tool URL: `{event.get('url')}`",
         f"- Feedback type: `{event.get('feedback', {}).get('feedback_type')}`",
+        target_line,
         f"- Human feedback: {feedback_text}",
         "",
     ]
+
+
+def _feedback_events_by_target(events: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    grouped: dict[str, list[dict[str, Any]]] = {
+        "discovery": [],
+        "profiler": [],
+        "unscoped": [],
+    }
+    for event in events:
+        target_prompt = event.get("target_prompt")
+        if target_prompt in {"discovery", "profiler"}:
+            grouped[target_prompt].append(event)
+        else:
+            grouped["unscoped"].append(event)
+    return grouped
+
+
+def _extend_targeted_feedback_section(
+    lines: list[str],
+    *,
+    title: str,
+    target_prompt: str,
+    events: list[dict[str, Any]],
+) -> None:
+    lines.extend([
+        f"## {title}",
+        "",
+        f"These events may only be used to propose edits to `{target_prompt}.md`.",
+        "",
+    ])
+    if not events:
+        lines.append("No matching week-scoped annotations were found.")
+        lines.append("")
+        return
+    for idx, event in enumerate(events, start=1):
+        lines.extend(_render_feedback_event(idx, event))
 
 
 def _feedback_payload(event: dict[str, Any]) -> dict[str, Any]:
