@@ -18,6 +18,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 concurrency:
   group: weekly-briefing
@@ -52,6 +53,16 @@ jobs:
             echo "week=$(date -u +'%G-W%V')" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Prepare result branch
+        run: |
+          BRANCH="weekly/${{ steps.week.outputs.week }}"
+          git fetch origin "$BRANCH" || true
+          if git show-ref --verify --quiet "refs/remotes/origin/$BRANCH"; then
+            git switch -C "$BRANCH" "origin/$BRANCH"
+          else
+            git switch -c "$BRANCH"
+          fi
+
       - name: Run weekly briefing
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -65,15 +76,29 @@ jobs:
             --max-cost-usd "${{ inputs.max_cost_usd || '15' }}" \
             --rerun
 
-      - name: Commit and push results
+      - name: Commit and open PR
         if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           git config user.name "autoresearch-bot"
           git config user.email "autoresearch-bot@users.noreply.github.com"
+          BRANCH="weekly/${{ steps.week.outputs.week }}"
+
           git add -f weekly_runs/
           if git diff --cached --quiet; then
             echo "No new files to commit."
           else
             git commit -m "weekly: ${{ steps.week.outputs.week }} briefing"
-            git push
+            git push -u origin "$BRANCH"
+          fi
+
+          if gh pr view "$BRANCH" --json number >/dev/null 2>&1; then
+            echo "PR already exists for $BRANCH."
+          else
+            gh pr create \
+              --base main \
+              --head "$BRANCH" \
+              --title "weekly: ${{ steps.week.outputs.week }} briefing" \
+              --body "Automated weekly briefing output for ${{ steps.week.outputs.week }}."
           fi
