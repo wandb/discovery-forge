@@ -150,14 +150,14 @@ def test_generate_comparison_table_unknown_for_none_values(tmp_path):
 
 def test_build_writer_agent_returns_agent():
     from autoresearch_researcher.agents.writer import build_writer_agent
-    agent = build_writer_agent(output_dir=Path("/tmp"), week="2026-W99")
+    agent = build_writer_agent(output_dir=Path("/tmp"), day="2026-05-28")
     assert agent is not None
     assert agent.name == "WriterAgent"
 
 
 def test_writer_agent_no_hardcoded_tool_names():
     from autoresearch_researcher.agents.writer import build_writer_agent
-    agent = build_writer_agent(output_dir=Path("/tmp"), week="2026-W99")
+    agent = build_writer_agent(output_dir=Path("/tmp"), day="2026-05-28")
     instructions_lower = agent.instructions.lower()
     forbidden = ["ai scientist", "agent laboratory", "gpt-researcher", "perplexity"]
     for name in forbidden:

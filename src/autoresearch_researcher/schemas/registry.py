@@ -11,8 +11,8 @@ class RegistryEntry(BaseModel):
     slug: str
     name: str
     url: str
-    first_seen_week: str
-    last_updated_week: str
+    first_seen_day: str
+    last_updated_day: str
     last_profiled_at: datetime
     stars: int | None
     last_commit: str | None

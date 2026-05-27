@@ -239,7 +239,7 @@ def get_agent_trace_call_metadata(trace_id: str) -> tuple[str | None, str | None
     return _AGENT_TRACE_CALLS.get(trace_id, (None, None))
 
 
-def init_observability(week_id: str):
+def init_observability(day_id: str):
     """Initialize W&B Weave tracing. Call exactly once per app lifecycle."""
     client = weave.init("wandb-smle/autoresearch-researcher")
     patch_weave_agent_span_names()
@@ -247,10 +247,10 @@ def init_observability(week_id: str):
     return client
 
 
-def create_run_id(week: str) -> str:
-    """Return a stable-looking unique ID for linking weekly and per-tool traces."""
+def create_run_id(day: str) -> str:
+    """Return a stable-looking unique ID for linking daily and per-tool traces."""
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    return f"{week}-{stamp}-{uuid4().hex[:8]}"
+    return f"{day}-{stamp}-{uuid4().hex[:8]}"
 
 
 def prompt_hash(agent_name: str) -> str:
@@ -263,7 +263,7 @@ def prompt_hash(agent_name: str) -> str:
 def ensure_run_metadata(
     metadata_path: Path,
     *,
-    week: str,
+    day: str,
     run_id: str,
     prompt_hashes: dict[str, str],
     search_backend: str,
@@ -273,7 +273,7 @@ def ensure_run_metadata(
     data: dict[str, Any] = {}
     if metadata_path.exists():
         data = json.loads(metadata_path.read_text())
-    data.setdefault("week", week)
+    data.setdefault("day", day)
     data["run_id"] = run_id
     data["prompt_hashes"] = prompt_hashes
     if prompt_refs is not None:
@@ -307,7 +307,7 @@ def update_metadata_counts(
     accepted_count: int,
     rejected_count: int,
 ) -> None:
-    """Merge high-level weekly trace counters into run_metadata.json."""
+    """Merge high-level daily trace counters into run_metadata.json."""
     data: dict[str, Any] = {}
     if metadata_path.exists():
         data = json.loads(metadata_path.read_text())
@@ -445,7 +445,7 @@ def profile_review_output(profile: dict[str, Any], *, status: str) -> dict[str, 
         "project_url": profile.get("project_url"),
         "key_limitations": profile.get("key_limitations"),
         "source_ids": profile.get("source_ids"),
-        "profile_path": f"weekly_runs/_registry/profiles/{slug}.md" if status == "accepted" else None,
+        "profile_path": f"daily_runs/_registry/profiles/{slug}.md" if status == "accepted" else None,
         "prompt_ref": profile.get("profiler_prompt_ref"),
     }
     return output
@@ -582,18 +582,18 @@ def name_to_slug(name: str) -> str:
     return slug.strip("-")
 
 
-def backup_week_dir(week_dir: Path) -> Path:
+def backup_run_dir(run_dir: Path) -> Path:
     """
-    Rename week_dir to a numbered backup and return the backup path.
-    Leaves week_dir non-existent so a fresh run can recreate it.
+    Rename run_dir to a numbered backup and return the backup path.
+    Leaves run_dir non-existent so a fresh run can recreate it.
     """
-    parent = week_dir.parent
-    base = week_dir.name
+    parent = run_dir.parent
+    base = run_dir.name
     n = 1
     while True:
         backup = parent / f"{base}_backup_{n}"
         if not backup.exists():
-            shutil.move(str(week_dir), str(backup))
+            shutil.move(str(run_dir), str(backup))
             return backup
         n += 1
 
@@ -640,14 +640,14 @@ def load_jsonl(path: Path) -> list[dict[str, Any]]:
 def stage_run_config(
     *,
     workflow_name: str,
-    week: str,
+    day: str,
     run_id: str,
     stage: str,
     trace_id: str | None = None,
     metadata: dict[str, Any] | None = None,
 ) -> RunConfig:
     """Build a named Agents SDK trace config for a pipeline stage."""
-    trace_metadata = {"week": week, "run_id": run_id, "stage": stage}
+    trace_metadata = {"day": day, "run_id": run_id, "stage": stage}
     if metadata:
         trace_metadata.update(metadata)
     return RunConfig(
@@ -695,7 +695,7 @@ def _profile_status_from_files(
 async def profile_tool_candidate(
     *,
     candidate,
-    week: str,
+    day: str,
     run_id: str,
     output_dir: Path,
     registry,
@@ -720,13 +720,13 @@ async def profile_tool_candidate(
     profiler_agent = build_profiler_agent(
         output_dir=output_dir,
         registry=registry,
-        week=week,
+        day=day,
         search_backend=search_backend,
         instructions_override=profiler_instructions,
     )
 
     with weave.attributes({
-        "week": week,
+        "day": day,
         "run_id": run_id,
         "stage": "profiling",
         "tool_name": candidate.name,
@@ -741,7 +741,7 @@ async def profile_tool_candidate(
             max_turns=15,
             run_config=stage_run_config(
                 workflow_name=workflow_name,
-                week=week,
+                day=day,
                 run_id=run_id,
                 stage="profiling",
                 trace_id=profile_trace_id,
@@ -765,7 +765,7 @@ async def profile_tool_candidate(
         rejected_before=rejected_before,
     )
     record = {
-        "week": week,
+        "day": day,
         "run_id": run_id,
         "slug": status["slug"],
         "name": candidate.name,
@@ -787,7 +787,7 @@ async def profile_tool_candidate(
     return usage[0], usage[1], usage[2], record
 
 async def run_briefing(
-    week: str,
+    day: str,
     output_dir: Path,
     max_tools: int,
     max_cost_usd: float,
@@ -813,7 +813,7 @@ async def run_briefing(
     from autoresearch_researcher.tools.registry import ToolRegistry
 
     metadata_path = output_dir / "run_metadata.json"
-    run_id = create_run_id(week)
+    run_id = create_run_id(day)
     prompt_versions = (
         load_local_instruction_prompts(max_tools=max_tools)
         if dry_run
@@ -824,7 +824,7 @@ async def run_briefing(
     prompt_content_map = prompt_contents(prompt_versions)
     ensure_run_metadata(
         metadata_path,
-        week=week,
+        day=day,
         run_id=run_id,
         prompt_hashes=prompt_hash_map,
         prompt_refs=prompt_ref_map,
@@ -849,7 +849,7 @@ async def run_briefing(
         # In dry-run mode, skip real LLM calls; create placeholder outputs
         _write_dry_run_outputs(
             output_dir,
-            week,
+            day,
             run_id=run_id,
             profiler_prompt_hash=prompt_hash_map["profiler"],
             search_backend=search_backend,
@@ -877,12 +877,12 @@ async def run_briefing(
                 instructions_override=prompt_content_map["discovery"],
             )
             discovery_prompt = (
-                f"Discover experiment-automation tools for the week of {week}. "
+                f"Discover experiment-automation tools for {day}. "
                 f"Find up to {max_tools} candidates and save them. "
                 "For each URL, first call is_known_tool to skip ones already in the registry."
             )
             with weave.attributes({
-                "week": week,
+                "day": day,
                 "run_id": run_id,
                 "stage": "discovery",
                 "discovery_prompt_hash": prompt_hash_map["discovery"],
@@ -895,7 +895,7 @@ async def run_briefing(
                     max_turns=120,
                     run_config=stage_run_config(
                         workflow_name="stage1_discovery",
-                        week=week,
+                        day=day,
                         run_id=run_id,
                         stage="discovery",
                         metadata={
@@ -922,7 +922,7 @@ async def run_briefing(
         for candidate in candidates:
             budget.check()
             with weave.attributes({
-                "week": week,
+                "day": day,
                 "run_id": run_id,
                 "stage": "profiling",
                 "tool_name": candidate.name,
@@ -933,7 +933,7 @@ async def run_briefing(
             }):
                 usage_p, usage_c, usage_cost, record = await profile_tool_candidate(
                     candidate=candidate,
-                    week=week,
+                    day=day,
                     run_id=run_id,
                     output_dir=output_dir,
                     registry=registry,
@@ -953,25 +953,25 @@ async def run_briefing(
                 rejected_count += 1
 
         # ── Stage 3: Writing ──────────────────────────────────────────────────
-        # Build highlights from this week's _new_candidates / _updated_tools
-        highlights_md = generate_highlights(output_dir, week=week)
+        # Build highlights from today's _new_candidates / _updated_tools
+        highlights_md = generate_highlights(output_dir, day=day)
         (output_dir / "highlights.md").write_text(highlights_md)
 
-        # Writer reads from the global registry, not week_dir/tools/
+        # Writer reads from the global registry, not day_dir/tools/
         writer_agent = build_writer_agent(
             output_dir=output_dir,
-            week=week,
+            day=day,
             registry=registry,
             instructions_override=prompt_content_map["writer"],
         )
         write_prompt = (
-            f"Generate the weekly briefing for {week}. "
+            f"Generate the daily briefing for {day}. "
             "Call read_tool_profiles_tool to load profiles from the global registry, "
             "then incorporate the pre-generated highlights from highlights.md, "
             "and save the final draft via save_draft_tool and save_comparison_table_tool."
         )
         with weave.attributes({
-            "week": week,
+            "day": day,
             "run_id": run_id,
             "stage": "writing",
             "writer_prompt_hash": prompt_hash_map["writer"],
@@ -983,7 +983,7 @@ async def run_briefing(
                 max_turns=20,
                 run_config=stage_run_config(
                     workflow_name="stage3_writer",
-                    week=week,
+                    day=day,
                     run_id=run_id,
                     stage="writing",
                     metadata={
@@ -1044,7 +1044,7 @@ _DRY_RUN_DESCRIPTIONS = [
 
 def _write_dry_run_outputs(
     output_dir: Path,
-    week: str,
+    day: str,
     *,
     run_id: str | None = None,
     profiler_prompt_hash: str | None = None,
@@ -1105,7 +1105,7 @@ def _write_dry_run_outputs(
             f.write(source + "\n")
 
         append_profile_run(output_dir, {
-            "week": week,
+            "day": day,
             "run_id": run_id,
             "slug": slug,
             "name": name,
@@ -1133,13 +1133,13 @@ def _write_dry_run_outputs(
 
     # Build draft with all citations
     draft_lines = [
-        f"# Weekly Briefing: Experiment-Automation Tools",
-        f"**Week**: {week}",
+        f"# Daily Briefing: Experiment-Automation Tools",
+        f"**Day**: {day}",
         f"**Published**: (dry run)",
         f"**Tools covered**: {_DRY_RUN_TOOL_COUNT}",
         f"**Sources**: {_DRY_RUN_TOOL_COUNT}",
         "",
-        "## This Week's Highlights",
+        "## Today's Highlights",
         "",
         "First issue — baseline established.",
         "",

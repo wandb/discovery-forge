@@ -53,10 +53,10 @@ def test_profiler_save_routes_to_registry(tmp_path):
     from autoresearch_researcher.tools.registry import ToolRegistry
 
     registry = ToolRegistry.load(tmp_path / "_registry")
-    week_dir = tmp_path / "2026-W19"
+    week_dir = tmp_path / "2026-05-19"
     week_dir.mkdir()
 
-    agent = build_profiler_agent(output_dir=week_dir, registry=registry, week="2026-W19")
+    agent = build_profiler_agent(output_dir=week_dir, registry=registry, day="2026-05-19")
 
     # Find the save_tool_profile tool's underlying callable and invoke directly
     # Verify by checking the registry state after a manual add

@@ -2,11 +2,11 @@
 
 ## Overview
 
-A multi-agent system that runs once a week to survey **autonomous research tools in the experiment-automation space** and produce a publishable comparison guide (Markdown).
+A multi-agent system that runs once a day to survey **autonomous research tools in the experiment-automation space** and produce a publishable comparison guide (Markdown).
 
 ## v1 Goals
 
-- Auto-publish a tool inventory + comparison guide once a week
+- Auto-publish a tool inventory + comparison guide once a day
 - A human (the maintainer) reviews each issue and writes a `final.md` + `feedback.md`
 - v2 will use that feedback to improve system prompts (out of scope here)
 
@@ -35,23 +35,23 @@ Categories (the agent must discover specific tools — this PRD intentionally av
 
 ## Input
 
-Week identifier (e.g. `2026-W19`). Passed via CLI; cron-friendly.
+Day identifier (e.g. `2026-05-28`). Passed via CLI; cron-friendly.
 
 ## Output structure
 
 ```
-weekly_runs/
+daily_runs/
 ├── _registry/
 │   ├── tools.jsonl                  # global tool index
 │   ├── profiles/{tool_slug}.md      # canonical per-tool detail cards
 │   └── sources.jsonl                # cumulative citation sources
-└── 2026-W19/
+└── 2026-05-19/
     ├── run_metadata.json            # run_id, prompt hashes, timestamps, tokens, cost, counts
     ├── _candidates.jsonl            # Discovery output
     ├── _profile_runs.jsonl          # per-tool Weave trace links
-    ├── _new_candidates.jsonl        # tools first profiled this week
+    ├── _new_candidates.jsonl        # tools first profiled today
     ├── _updated_tools.jsonl         # known tools whose metadata changed
-    ├── highlights.md                # weekly delta summary
+    ├── highlights.md                # daily delta summary
     ├── draft.md                     # main publishable draft
     ├── comparison_table.md          # standalone comparison table
     ├── feedback_events.jsonl        # optional, after Weave feedback ingest
@@ -65,8 +65,8 @@ weekly_runs/
 ## Publish format (draft.md)
 
 ### Required sections
-1. **Header**: week, publish date, # tools covered, # sources
-2. **This Week's Highlights**: 3–5 new releases or major updates (or "no major updates this week")
+1. **Header**: day, publish date, # tools covered, # sources
+2. **Today's Highlights**: 3–5 new releases or major updates (or "no major updates today")
 3. **Use-Case Recommendation Matrix**: "your situation → recommended tool" table
 4. **Full Comparison Table**: tool × attribute matrix
 5. **Tool Cards**: one paragraph + links per tool
@@ -107,7 +107,7 @@ Orchestrator (CLI entrypoint)
   │     output: _registry/profiles/{slug}.md + _profile_runs.jsonl
   │
   └─→ WriterAgent
-        input: all _registry/profiles/{slug}.md + weekly delta files
+        input: all _registry/profiles/{slug}.md + daily delta files
         tools: read_tool_profiles, get_tool_body, read_highlights, save_draft, save_comparison_table
         trace: stage3_writer
         output: draft.md, comparison_table.md
@@ -121,12 +121,12 @@ No agent-to-agent handoffs — the orchestrator owns flow control. Simpler debug
 - [x] `uv` + `pyproject.toml`
 - [x] Dependencies: `openai-agents`, `weave`, `pytest`, `pytest-asyncio`, `python-dotenv`
 - [x] `.env.example` template (`OPENAI_API_KEY`, `WANDB_API_KEY`, `GITHUB_TOKEN` optional)
-- [x] `.gitignore` (`.env`, `weekly_runs/`, `__pycache__/`, `.venv/`, `wandb/`)
+- [x] `.gitignore` (`.env`, `daily_runs/`, `__pycache__/`, `.venv/`, `wandb/`)
 - [x] `tests/` folder with `conftest.py`
 
 ### US2: CLI entrypoint
-- [x] `autoresearch-researcher run --week 2026-W19 [--max-tools 12] [--max-cost-usd 20] [--dry-run]`
-- [x] Auto-create `weekly_runs/{week}/` (abort if it exists without `--rerun`)
+- [x] `autoresearch-researcher run --day 2026-05-19 [--max-tools 12] [--max-cost-usd 20] [--dry-run]`
+- [x] Auto-create `daily_runs/{day}/` (abort if it exists without `--rerun`)
 - [x] Record start timestamp in `run_metadata.json`
 - [x] Record cumulative token / cost / elapsed time on exit
 
@@ -154,7 +154,7 @@ No agent-to-agent handoffs — the orchestrator owns flow control. Simpler debug
 - [x] Read all `_registry/profiles/*.md` and synthesize
 - [x] Auto-generate the comparison table (every column filled, blanks shown as "unknown")
 - [x] Use-case matrix (single GPU / multi-GPU / enterprise / data-private, etc.)
-- [x] Identify "this week's highlights" (compare with prior week if folder exists, else "first issue")
+- [x] Identify "today's highlights" (compare with prior run if folder exists, else "first issue")
 - [x] Every factual claim cites (`[^N]` + sources.jsonl mapping)
 - [x] Tone: informational only, no marketing language
 
@@ -170,7 +170,7 @@ No agent-to-agent handoffs — the orchestrator owns flow control. Simpler debug
 - [x] **W&B Weave tracing** enabled
   - One call to `weave.init(project="autoresearch-researcher")`
   - `set_trace_processors([AutoresearchWeaveTracingProcessor()])` to auto-capture and cleanly parent OpenAI Agents traces
-  - Tag each weekly run and tool profile call with `week` and `run_id`
+  - Tag each daily run and tool profile call with `day` and `run_id`
   - Each candidate profiling run is an independent `stage2_profile_{slug}` root call for human review
   - Stage 2 trace tree should read as `stage2_profile_{slug} → ProfilerAgent → LLM/tool calls`
   - `_profile_runs.jsonl` links `slug`, `status`, `workflow_name`, `agent_trace_id`, `weave_call_id`, `trace_url`, and prompt hash
@@ -178,18 +178,18 @@ No agent-to-agent handoffs — the orchestrator owns flow control. Simpler debug
 - [x] CLI prints the Weave trace URL (clickable for post-run review)
 
 ### US8: Diff infrastructure (feedback loop seed)
-- [x] CLI subcommand: `autoresearch-researcher diff --week 2026-W19`
+- [x] CLI subcommand: `autoresearch-researcher diff --day 2026-05-19`
   - Run after the maintainer writes `final.md`
   - Generates `diff.md` with line-level + semantic diff between `draft.md` and `final.md`
   - Categories: ADD (tool added), FIX (factual edit), REMOVE, REWORD, BALANCE
 - [x] Auto-generate `feedback.md` template (form for the human; see below)
 
 ### US9: Re-run safety
-- [x] `--rerun` allows re-running the same week (previous folder backed up)
+- [x] `--rerun` allows re-running the same day (previous folder backed up)
 - [x] On partial failure, resume from `_candidates.jsonl` starting at ProfilerAgent
 
 ### US10: Per-tool feedback ingestion
-- [x] CLI subcommand: `autoresearch-researcher feedback ingest --week 2026-W19`
+- [x] CLI subcommand: `autoresearch-researcher feedback ingest --day 2026-05-19`
   - Reads `_profile_runs.jsonl`
   - Fetches Weave feedback for each `weave_call_id`
   - Writes `feedback_events.jsonl`
@@ -198,7 +198,7 @@ No agent-to-agent handoffs — the orchestrator owns flow control. Simpler debug
 - [x] Prompt edits are not applied automatically; the maintainer reviews notes before changing `instructions/*.md`
 
 ### US11: Feedback-driven prompt improvement proposal
-- [x] CLI subcommand: `autoresearch-researcher improve propose --week 2026-W19`
+- [x] CLI subcommand: `autoresearch-researcher improve propose --day 2026-05-19`
   - Runs `PromptImprovementProposerAgent` (gpt-5.4-mini)
   - Reads every free-text event in `feedback_events.jsonl`
   - Reads current contents of `discovery.md`, `profiler.md`, `writer.md`
@@ -212,7 +212,7 @@ No agent-to-agent handoffs — the orchestrator owns flow control. Simpler debug
 - [x] Python code changes, schema changes, deployment changes, and automatic prompt edits are out of scope
 
 ### US12: Versioned prompt improvement loop
-- [x] CLI subcommand: `autoresearch-researcher improve apply --week 2026-W19`
+- [x] CLI subcommand: `autoresearch-researcher improve apply --day 2026-05-19`
   - Runs `PromptImprovementApplierAgent` (gpt-5.4-mini)
   - Reads `prompt_improvement_plan.md` and current instruction contents
   - Calls `update_discovery_instructions` / `update_profiler_instructions` / `update_writer_instructions` only for files the plan flags for change
@@ -239,7 +239,7 @@ No agent-to-agent handoffs — the orchestrator owns flow control. Simpler debug
 ## feedback.md template (auto-generated by US8)
 
 ```markdown
-# Week {week} Feedback
+# Run {day} Feedback
 
 ## Publish decision: ✅ as-is / ⚠️ minor edits / 🔴 major rewrite / ❌ reject
 
@@ -262,7 +262,7 @@ No agent-to-agent handoffs — the orchestrator owns flow control. Simpler debug
 - ProfilerAgent:
 - WriterAgent:
 
-## Recurring patterns (only issues seen 3+ weeks in a row)
+## Recurring patterns (only issues seen 3+ runs in a row)
 ```
 
 ## Validation (smoke-test level)
@@ -282,7 +282,7 @@ Build pass criteria:
 
 ## Completion criterion
 
-Once every User Story checkbox is ✅, the smoke test fully passes, and one real dry-run produces valid output in `weekly_runs/2026-W19/`:
+Once every User Story checkbox is ✅, the smoke test fully passes, and one real dry-run produces valid output in `daily_runs/2026-05-19/`:
 
 `<promise>BRIEFING_AGENT_READY</promise>`
 

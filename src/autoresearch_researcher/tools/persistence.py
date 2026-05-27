@@ -64,13 +64,13 @@ def save_tool_profile(profile: ToolProfile, tools_dir: Path) -> None:
 
 
 def save_draft(content: str, output_dir: Path) -> None:
-    """Save draft.md to the week output directory."""
+    """Save draft.md to the daily output directory."""
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "draft.md").write_text(content)
 
 
 def save_comparison_table(content: str, output_dir: Path) -> None:
-    """Save comparison_table.md to the week output directory."""
+    """Save comparison_table.md to the daily output directory."""
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "comparison_table.md").write_text(content)
 

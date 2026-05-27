@@ -1,4 +1,4 @@
-"""WriterAgent: synthesizes tool profiles into the weekly briefing draft."""
+"""WriterAgent: synthesizes tool profiles into the daily briefing draft."""
 
 import json
 from pathlib import Path
@@ -10,27 +10,27 @@ from autoresearch_researcher.agents.discovery import load_instructions
 from autoresearch_researcher.tools.persistence import save_comparison_table, save_draft
 
 
-def generate_highlights(week_dir: Path, week: str) -> str:
+def generate_highlights(day_dir: Path, day: str) -> str:
     """
-    Build the 'This Week's Highlights' section from per-week change files.
+    Build the "Today's Highlights" section from per-day change files.
 
     Reads:
-      {week_dir}/_new_candidates.jsonl  → tools first profiled this week
-      {week_dir}/_updated_tools.jsonl   → tools whose stars/last_commit changed
+      {day_dir}/_new_candidates.jsonl  → tools first profiled today
+      {day_dir}/_updated_tools.jsonl   → tools whose stars/last_commit changed
     """
-    new_file = week_dir / "_new_candidates.jsonl"
-    updated_file = week_dir / "_updated_tools.jsonl"
+    new_file = day_dir / "_new_candidates.jsonl"
+    updated_file = day_dir / "_updated_tools.jsonl"
 
     new_entries = _read_jsonl(new_file)
     updated_entries = _read_jsonl(updated_file)
 
     if not new_entries and not updated_entries:
-        return f"## This Week's Highlights ({week})\n\nNo new tools discovered this week and no major updates to existing tools.\n"
+        return f"## Today's Highlights ({day})\n\nNo new tools discovered today and no major updates to existing tools.\n"
 
-    lines = [f"## This Week's Highlights ({week})", ""]
+    lines = [f"## Today's Highlights ({day})", ""]
 
     if new_entries:
-        lines.append(f"**New this week ({len(new_entries)}):**")
+        lines.append(f"**New today ({len(new_entries)}):**")
         lines.append("")
         for e in new_entries:
             stars = e.get("stars")
@@ -39,7 +39,7 @@ def generate_highlights(week_dir: Path, week: str) -> str:
         lines.append("")
 
     if updated_entries:
-        lines.append(f"**Updated this week ({len(updated_entries)}):**")
+        lines.append(f"**Updated today ({len(updated_entries)}):**")
         lines.append("")
         for e in updated_entries:
             stars = e.get("stars")
@@ -136,20 +136,20 @@ def generate_comparison_table(profiles: list[dict]) -> str:
 
 def build_writer_agent(
     output_dir: Path,
-    week: str,
+    day: str,
     registry=None,
     instructions_override: str | None = None,
 ) -> "Agent":
     """Build and return the WriterAgent.
 
     If `registry` is provided, profiles are read from the global registry
-    (`_registry/profiles/`) instead of the per-week `tools/` directory.
+    (`_registry/profiles/`) instead of the per-day `tools/` directory.
     """
     profiles_dir = registry.profiles_dir if registry is not None else output_dir / "tools"
 
     @function_tool
     def save_draft_tool(content: str) -> str:
-        """Save the main weekly briefing draft as draft.md."""
+        """Save the main daily briefing draft as draft.md."""
         save_draft(content, output_dir)
         return f"Saved draft.md to {output_dir}"
 
@@ -179,7 +179,7 @@ def build_writer_agent(
 
     @function_tool
     def read_highlights_tool() -> str:
-        """Read the pre-generated highlights.md for this week."""
+        """Read the pre-generated highlights.md for today."""
         path = output_dir / "highlights.md"
         if not path.exists():
             return ""

@@ -99,7 +99,7 @@ Before calling `save_candidate` for any URL, **first call `is_known_tool(url)`**
 If the response starts with `known:`, that tool is already in the global registry — DO NOT save it again.
 Only call `save_candidate` when the response starts with `new:`.
 
-This skips re-discovery of tools already profiled in earlier weeks, saving cost.
+This skips re-discovery of tools already profiled in earlier runs, saving cost.
 
 For each IN-scope candidate call `save_candidate` with:
 - `name`: The tool/system name (use the official name from the repo/paper)

@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "autoresearch-researcher"
 version = "0.1.0"
-description = "Weekly tool briefing agent for experiment automation research"
+description = "Daily tool briefing agent for experiment automation research"
 requires-python = ">=3.11"
 dependencies = [
     "openai-agents>=0.0.19",

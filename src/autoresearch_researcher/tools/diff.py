@@ -95,9 +95,9 @@ def generate_diff(draft: str, final: str) -> str:
     return "".join(sections)
 
 
-def generate_feedback_template(week: str) -> str:
-    """Generate the feedback.md template for a given week."""
-    return f"""# Week {week} Feedback
+def generate_feedback_template(day: str) -> str:
+    """Generate the feedback.md template for a given run."""
+    return f"""# Run {day} Feedback
 
 ## Publish decision: ✅ as-is / ⚠️ minor edits / 🔴 major rewrite / ❌ reject
 
@@ -120,5 +120,5 @@ def generate_feedback_template(week: str) -> str:
 - ProfilerAgent:
 - WriterAgent:
 
-## Recurring patterns (only issues seen 3+ weeks in a row)
+## Recurring patterns (only issues seen 3+ runs in a row)
 """
