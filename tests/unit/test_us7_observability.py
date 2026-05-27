@@ -55,7 +55,7 @@ def test_budget_exceeded_error_carries_info():
 def test_init_observability_calls_weave_init_once(mock_weave):
     from autoresearch_researcher.orchestrator import init_observability
     with patch("autoresearch_researcher.orchestrator.set_trace_processors") as mock_stp:
-        init_observability(week_id="2026-W99")
+        init_observability(day_id="2026-05-28")
     mock_weave["init"].assert_called_once()
 
 
@@ -63,7 +63,7 @@ def test_init_observability_uses_replace_not_add(mock_weave):
     """set_trace_processors must be called with a list (replace), not add_trace_processor."""
     from autoresearch_researcher.orchestrator import init_observability
     with patch("autoresearch_researcher.orchestrator.set_trace_processors") as mock_stp:
-        init_observability(week_id="2026-W99")
+        init_observability(day_id="2026-05-28")
     mock_stp.assert_called_once()
     # Must be called with a list argument
     args = mock_stp.call_args[0]
@@ -75,7 +75,7 @@ def test_init_observability_does_not_call_add_trace_processor(mock_weave):
     from autoresearch_researcher.orchestrator import init_observability
     with patch("autoresearch_researcher.orchestrator.set_trace_processors") as mock_stp, \
          patch("autoresearch_researcher.orchestrator.add_trace_processor", create=True) as mock_add:
-        init_observability(week_id="2026-W99")
+        init_observability(day_id="2026-05-28")
     # add_trace_processor should never be called
     mock_add.assert_not_called()
 
@@ -85,7 +85,7 @@ def test_init_observability_does_not_call_add_trace_processor(mock_weave):
 def test_metadata_updated_with_cost_after_run(tmp_path):
     from autoresearch_researcher.orchestrator import update_metadata_costs
     metadata_path = tmp_path / "run_metadata.json"
-    metadata_path.write_text(json.dumps({"week": "2026-W99", "started_at": "2026-01-01T00:00:00Z"}))
+    metadata_path.write_text(json.dumps({"day": "2026-05-28", "started_at": "2026-01-01T00:00:00Z"}))
 
     update_metadata_costs(
         metadata_path=metadata_path,
@@ -103,11 +103,11 @@ def test_metadata_updated_with_cost_after_run(tmp_path):
 def test_metadata_cost_update_preserves_existing_fields(tmp_path):
     from autoresearch_researcher.orchestrator import update_metadata_costs
     metadata_path = tmp_path / "run_metadata.json"
-    metadata_path.write_text(json.dumps({"week": "2026-W99", "max_tools": 12}))
+    metadata_path.write_text(json.dumps({"day": "2026-05-28", "max_tools": 12}))
 
     update_metadata_costs(metadata_path, 0.5, 100, 50)
     data = json.loads(metadata_path.read_text())
-    assert data["week"] == "2026-W99"
+    assert data["day"] == "2026-05-28"
     assert data["max_tools"] == 12
 
 
@@ -129,7 +129,7 @@ def test_orchestrator_imports_weave_not_in_tests(mock_weave):
     """Verify orchestrator uses mocked weave in unit test context."""
     from autoresearch_researcher.orchestrator import init_observability
     with patch("autoresearch_researcher.orchestrator.set_trace_processors"):
-        init_observability("2026-W99")
+        init_observability("2026-05-28")
     # weave.init was called via the mock (not a real network call)
     assert mock_weave["init"].called
 

@@ -35,25 +35,25 @@ DEFAULT_PUBLISH_MAX_TOOLS = 12
 
 @dataclass
 class FeedbackImprovementContext:
-    """Inputs gathered from a week directory for the proposer agent."""
+    """Inputs gathered from a day directory for the proposer agent."""
 
-    week: str
-    week_dir: Path
+    day: str
+    day_dir: Path
     feedback_events: list[dict[str, Any]]
     profile_runs: list[dict[str, Any]]
     candidates: list[dict[str, Any]]
     rejected_profiles: list[dict[str, Any]]
 
 
-def load_feedback_context(week_dir: Path) -> FeedbackImprovementContext:
-    """Load feedback and weekly artifacts needed for prompt proposal generation."""
+def load_feedback_context(day_dir: Path) -> FeedbackImprovementContext:
+    """Load feedback and daily artifacts needed for prompt proposal generation."""
     return FeedbackImprovementContext(
-        week=week_dir.name,
-        week_dir=week_dir,
-        feedback_events=_read_jsonl(week_dir / "feedback_events.jsonl"),
-        profile_runs=_read_jsonl(week_dir / "_profile_runs.jsonl"),
-        candidates=_read_jsonl(week_dir / "_candidates.jsonl"),
-        rejected_profiles=_read_jsonl(week_dir / "_rejected_profiles.jsonl"),
+        day=day_dir.name,
+        day_dir=day_dir,
+        feedback_events=_read_jsonl(day_dir / "feedback_events.jsonl"),
+        profile_runs=_read_jsonl(day_dir / "_profile_runs.jsonl"),
+        candidates=_read_jsonl(day_dir / "_candidates.jsonl"),
+        rejected_profiles=_read_jsonl(day_dir / "_rejected_profiles.jsonl"),
     )
 
 
@@ -65,17 +65,17 @@ def render_proposer_input(
     """Render the user message passed to PromptImprovementProposerAgent."""
     routed_events = _feedback_events_by_target(context.feedback_events)
     lines = [
-        f"# Week: {context.week}",
+        f"# Day: {context.day}",
         "",
         "You are improving prompt-only behavior for the autoresearch pipeline.",
         "Read every feedback event, then call `save_improvement_plan` exactly once.",
         "",
-        "Week-scoped annotation routing is mandatory:",
-        "- `wandb.annotation.W{number}_Discovery` feedback may only justify edits to `discovery.md`.",
-        "- `wandb.annotation.W{number}_Profiler` feedback may only justify edits to `profiler.md`.",
+        "Day-scoped annotation routing is mandatory:",
+        "- `wandb.annotation.D{YYYYMMDD}_Discovery` feedback may only justify edits to `discovery.md`.",
+        "- `wandb.annotation.D{YYYYMMDD}_Profiler` feedback may only justify edits to `profiler.md`.",
         "- Do not use Discovery feedback to edit `profiler.md`, and do not use Profiler feedback to edit `discovery.md`.",
         "",
-        "## Weekly Context",
+        "## Daily Context",
         f"- Candidates discovered: {len(context.candidates)}",
         f"- Profile runs: {len(context.profile_runs)}",
         f"- Rejected profiles: {len(context.rejected_profiles)}",
@@ -104,7 +104,7 @@ def render_proposer_input(
             lines.extend([
                 "## Unscoped Legacy Feedback",
                 "",
-                "These events do not use the `W{number}_Discovery` / `W{number}_Profiler` naming convention.",
+                "These events do not use the `D{YYYYMMDD}_Discovery` / `D{YYYYMMDD}_Profiler` naming convention.",
                 "Do not use them to justify prompt edits. Treat them as historical context only.",
                 "",
             ])
@@ -173,14 +173,14 @@ def render_applier_input(
 
 async def _run_proposer_agent(
     *,
-    week_dir: Path,
+    day_dir: Path,
     instructions_dir: Path,
     max_turns: int,
 ) -> Path:
     """Build, run the proposer agent, and return the path to the plan file."""
-    plan_path = week_dir / PLAN_FILENAME
+    plan_path = day_dir / PLAN_FILENAME
     agent = build_prompt_proposer_agent(plan_path=plan_path)
-    context = load_feedback_context(week_dir)
+    context = load_feedback_context(day_dir)
     user_input = render_proposer_input(context, instructions_dir=instructions_dir)
     await Runner.run(agent, input=user_input, max_turns=max_turns)
     if not plan_path.exists():
@@ -192,12 +192,12 @@ async def _run_proposer_agent(
 
 async def _run_applier_agent(
     *,
-    week_dir: Path,
+    day_dir: Path,
     instructions_dir: Path,
     max_turns: int,
 ) -> tuple[Path, list[Path]]:
     """Build, run the applier agent, and return (plan_path, changed instruction paths)."""
-    plan_path = week_dir / PLAN_FILENAME
+    plan_path = day_dir / PLAN_FILENAME
     if not plan_path.exists():
         raise FileNotFoundError(
             f"{plan_path} does not exist. Run `autoresearch-researcher improve propose` first."
@@ -219,7 +219,7 @@ async def _run_applier_agent(
 
 @weave.op(name="improve_propose")
 def propose_prompt_improvements(
-    week_dir: Path,
+    day_dir: Path,
     *,
     instructions_dir: Path = INSTRUCTIONS_DIR,
     max_turns: int = 6,
@@ -227,15 +227,15 @@ def propose_prompt_improvements(
     """Run the proposer agent and return Weave-friendly review output."""
     plan_path = asyncio.run(
         _run_proposer_agent(
-            week_dir=week_dir,
+            day_dir=day_dir,
             instructions_dir=instructions_dir,
             max_turns=max_turns,
         )
     )
     plan_markdown = plan_path.read_text()
-    context = load_feedback_context(week_dir)
+    context = load_feedback_context(day_dir)
     return {
-        "week": week_dir.name,
+        "day": day_dir.name,
         "plan_path": str(plan_path),
         "proposal_path": str(plan_path),
         "feedback_event_count": len(context.feedback_events),
@@ -252,7 +252,7 @@ def propose_prompt_improvements(
 
 @weave.op(name="improve_apply")
 def apply_prompt_improvements_traced(
-    week_dir: Path,
+    day_dir: Path,
     *,
     instructions_dir: Path = INSTRUCTIONS_DIR,
     max_turns: int = 6,
@@ -261,13 +261,13 @@ def apply_prompt_improvements_traced(
     """Run the applier agent and return Weave-friendly review output.
 
     When the agent actually changes any instruction file, the new content is
-    also published as Weave StringPrompt objects so the next weekly run picks
+    also published as Weave StringPrompt objects so the next daily run picks
     up the updated version refs immediately. There is no manual review step
     in this pipeline, so publishing is unconditional.
     """
     plan_path, changed_paths = asyncio.run(
         _run_applier_agent(
-            week_dir=week_dir,
+            day_dir=day_dir,
             instructions_dir=instructions_dir,
             max_turns=max_turns,
         )
@@ -282,16 +282,16 @@ def apply_prompt_improvements_traced(
         published_refs = prompt_refs_for_versions(versions)
 
     apply_log = render_apply_result_markdown(
-        week=week_dir.name,
+        day=day_dir.name,
         plan_path=plan_path,
         changed_paths=changed_paths,
         prompt_refs=published_refs,
     )
-    log_path = week_dir / APPLY_LOG_FILENAME
+    log_path = day_dir / APPLY_LOG_FILENAME
     log_path.write_text(apply_log)
 
     output: dict[str, Any] = {
-        "week": week_dir.name,
+        "day": day_dir.name,
         "plan_path": str(plan_path),
         "proposal_path": str(plan_path),
         "apply_log_path": str(log_path),
@@ -308,14 +308,14 @@ def apply_prompt_improvements_traced(
 
 def render_apply_result_markdown(
     *,
-    week: str,
+    day: str,
     plan_path: Path,
     changed_paths: list[Path],
     prompt_refs: dict[str, str | None] | None = None,
 ) -> str:
     """Render a Markdown summary for `improve apply` Weave output."""
     lines = [
-        f"# Prompt Improvement Apply Result for {week}",
+        f"# Prompt Improvement Apply Result for {day}",
         "",
         f"Plan: `{plan_path}`",
         "",
@@ -417,7 +417,7 @@ def _extend_targeted_feedback_section(
         "",
     ])
     if not events:
-        lines.append("No matching week-scoped annotations were found.")
+        lines.append("No matching day-scoped annotations were found.")
         lines.append("")
         return
     for idx, event in enumerate(events, start=1):

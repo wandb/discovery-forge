@@ -1,4 +1,4 @@
-"""ToolRegistry: global tool accumulator across weekly runs."""
+"""ToolRegistry: global tool accumulator across daily runs."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ def _normalize_url(url: str) -> str:
 
 class ToolRegistry:
     """
-    Global registry of all known tools across weekly runs.
+    Global registry of all known tools across daily runs.
 
     Persistence layout:
         {registry_dir}/
@@ -53,9 +53,9 @@ class ToolRegistry:
     def contains(self, url: str) -> bool:
         return _normalize_url(url) in self._url_index
 
-    def add(self, profile: ToolProfile, week: str) -> bool:
+    def add(self, profile: ToolProfile, day: str) -> bool:
         """
-        Add a tool to the registry. If it already exists, update last_updated_week.
+        Add a tool to the registry. If it already exists, update last_updated_day.
         Returns True if newly added, False if already existed.
         """
         url = profile.github_url or profile.project_url or profile.paper_url or ""
@@ -65,7 +65,7 @@ class ToolRegistry:
         if norm in self._url_index:
             idx = self._url_index[norm]
             entry = self._entries[idx]
-            entry.last_updated_week = week
+            entry.last_updated_day = day
             entry.last_profiled_at = now
             if profile.stars is not None:
                 entry.stars = profile.stars
@@ -80,8 +80,8 @@ class ToolRegistry:
             slug=profile.slug,
             name=profile.name,
             url=url,
-            first_seen_week=week,
-            last_updated_week=week,
+            first_seen_day=day,
+            last_updated_day=day,
             last_profiled_at=now,
             stars=profile.stars,
             last_commit=profile.last_commit,
@@ -95,7 +95,7 @@ class ToolRegistry:
         return True
 
     def update_metadata(
-        self, slug: str, stars: int | None, last_commit: str | None, week: str
+        self, slug: str, stars: int | None, last_commit: str | None, day: str
     ) -> bool:
         """
         Update an entry's stars/last_commit only. Returns True if anything changed.
@@ -110,7 +110,7 @@ class ToolRegistry:
                     entry.last_commit = last_commit
                     changed = True
                 if changed:
-                    entry.last_updated_week = week
+                    entry.last_updated_day = day
                     entry.last_profiled_at = datetime.now(timezone.utc)
                     self._rewrite_tools_jsonl()
                 return changed

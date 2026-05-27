@@ -1,11 +1,11 @@
 """
-Migrate existing per-week tool profiles into the global registry.
+Migrate existing per-day tool profiles into the global registry.
 
 Usage:
-    uv run python scripts/migrate_to_registry.py weekly_runs/2026-W19-full-survey 2026-W19
+    uv run python scripts/migrate_to_registry.py daily_runs/2026-05-19 2026-05-19
 
-Reads {week_dir}/tools/*.md and adds each profile to weekly_runs/_registry/.
-Existing week_dir is left untouched (rollback-safe).
+Reads {day_dir}/tools/*.md and adds each profile to daily_runs/_registry/.
+Existing day_dir is left untouched (rollback-safe).
 """
 
 import sys
@@ -22,22 +22,22 @@ from autoresearch_researcher.tools.registry import ToolRegistry  # noqa: E402
 
 def main() -> None:
     if len(sys.argv) != 3:
-        print(f"usage: {sys.argv[0]} <week_dir> <week_id>")
+        print(f"usage: {sys.argv[0]} <day_dir> <day_id>")
         sys.exit(1)
 
-    week_dir = Path(sys.argv[1])
-    week_id = sys.argv[2]
+    day_dir = Path(sys.argv[1])
+    day_id = sys.argv[2]
 
-    if not week_dir.exists():
-        print(f"ERROR: {week_dir} does not exist")
+    if not day_dir.exists():
+        print(f"ERROR: {day_dir} does not exist")
         sys.exit(1)
 
-    tools_dir = week_dir / "tools"
+    tools_dir = day_dir / "tools"
     if not tools_dir.exists():
         print(f"ERROR: {tools_dir} does not exist")
         sys.exit(1)
 
-    registry_dir = week_dir.parent / "_registry"
+    registry_dir = day_dir.parent / "_registry"
     registry = ToolRegistry.load(registry_dir)
     print(f"Loaded registry at {registry_dir} ({len(registry.get_all_entries())} existing entries)")
 
@@ -66,7 +66,7 @@ def main() -> None:
             skipped += 1
             continue
 
-        is_new = registry.add(profile, week=week_id)
+        is_new = registry.add(profile, day=day_id)
         status = "NEW" if is_new else "UPDATED"
         print(f"  {status:8} {profile.slug}")
         if is_new:

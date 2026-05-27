@@ -75,14 +75,14 @@ def is_experiment_automation(
 def build_profiler_agent(
     output_dir: Path,
     registry=None,
-    week: str | None = None,
+    day: str | None = None,
     search_backend: SearchBackend = DEFAULT_SEARCH_BACKEND,
     instructions_override: str | None = None,
 ) -> Agent:
     """Build and return the ProfilerAgent.
 
     If `registry` is provided, save_tool_profile routes the canonical profile
-    into the global registry (and records new/updated status for the given week).
+    into the global registry (and records new/updated status for the given day).
     """
     tools_dir = output_dir / "tools"
 
@@ -128,9 +128,9 @@ def build_profiler_agent(
             source_ids=source_ids,
         )
 
-        if registry is not None and week is not None:
-            is_new = registry.add(profile, week=week)
-            # Also log to the week dir which tools became new vs. updated
+        if registry is not None and day is not None:
+            is_new = registry.add(profile, day=day)
+            # Also log to the day dir which tools became new vs. updated
             log_file = output_dir / ("_new_candidates.jsonl" if is_new else "_updated_tools.jsonl")
             log_file.parent.mkdir(parents=True, exist_ok=True)
             with log_file.open("a") as f:

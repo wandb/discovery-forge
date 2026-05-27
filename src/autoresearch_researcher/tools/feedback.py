@@ -1,4 +1,4 @@
-"""Feedback ingestion from Weave calls into local weekly artifacts."""
+"""Feedback ingestion from Weave calls into local daily artifacts."""
 
 from __future__ import annotations
 
@@ -8,12 +8,12 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
 
-TARGET_ANNOTATION_RE = re.compile(r"(?:^|\.)(W(\d+)_(Discovery|Profiler))$")
+TARGET_ANNOTATION_RE = re.compile(r"(?:^|\.)(D(\d{8})_(Discovery|Profiler))$")
 
 
-def load_profile_runs(week_dir: Path) -> list[dict[str, Any]]:
-    """Load per-tool profile trace records for a week."""
-    path = week_dir / "_profile_runs.jsonl"
+def load_profile_runs(day_dir: Path) -> list[dict[str, Any]]:
+    """Load per-tool profile trace records for a day."""
+    path = day_dir / "_profile_runs.jsonl"
     if not path.exists():
         return []
     rows = []
@@ -66,19 +66,18 @@ def collect_call_feedback(client: Any, call_id: str) -> list[dict[str, Any]]:
     ]
 
 
-def annotation_target_prompt(feedback: dict[str, Any], week: str) -> str | None:
-    """Return the prompt file targeted by a week-scoped annotation name."""
-    week_match = re.search(r"W(\d+)$", week)
-    if week_match is None:
+def annotation_target_prompt(feedback: dict[str, Any], day: str) -> str | None:
+    """Return the prompt file targeted by a day-scoped annotation name."""
+    day_token = _day_annotation_token(day)
+    if day_token is None:
         return None
 
-    week_number = str(int(week_match.group(1)))
     for value in _annotation_name_candidates(feedback):
         match = TARGET_ANNOTATION_RE.search(value)
         if match is None:
             continue
-        annotation_week = str(int(match.group(2)))
-        if annotation_week != week_number:
+        annotation_day = match.group(2)
+        if annotation_day != day_token:
             continue
         agent_name = match.group(3).lower()
         return "discovery" if agent_name == "discovery" else "profiler"
@@ -100,10 +99,10 @@ def _annotation_name_candidates(feedback: dict[str, Any]) -> list[str]:
     return values
 
 
-def ingest_feedback(week_dir: Path, client: Any) -> list[dict[str, Any]]:
-    """Write feedback_events.jsonl and prompt_improvement_notes.md for a week."""
-    profile_runs = load_profile_runs(week_dir)
-    week = _feedback_week_id(week_dir, profile_runs)
+def ingest_feedback(day_dir: Path, client: Any) -> list[dict[str, Any]]:
+    """Write feedback_events.jsonl and prompt_improvement_notes.md for a day."""
+    profile_runs = load_profile_runs(day_dir)
+    day = _feedback_day_id(day_dir, profile_runs)
     events: list[dict[str, Any]] = []
     run_by_call_id = {
         run.get("weave_call_id"): run
@@ -124,9 +123,9 @@ def ingest_feedback(week_dir: Path, client: Any) -> list[dict[str, Any]]:
             return
         seen_keys.add(event_key)
 
-        target_prompt = annotation_target_prompt(feedback, week)
+        target_prompt = annotation_target_prompt(feedback, day)
         event = {
-            "week": (run or {}).get("week") or week,
+            "day": (run or {}).get("day") or day,
             "run_id": (run or {}).get("run_id"),
             "slug": (run or {}).get("slug"),
             "name": (run or {}).get("name"),
@@ -151,18 +150,18 @@ def ingest_feedback(week_dir: Path, client: Any) -> list[dict[str, Any]]:
             feedback,
             queue_name_cache=queue_name_cache,
         )
-        if annotation_target_prompt(feedback, week) is None:
+        if annotation_target_prompt(feedback, day) is None:
             continue
         call_id = feedback.get("call_id")
         run = run_by_call_id.get(call_id)
         add_event(feedback, run)
 
-    events_path = week_dir / "feedback_events.jsonl"
+    events_path = day_dir / "feedback_events.jsonl"
     with events_path.open("w") as f:
         for event in events:
             f.write(json.dumps(event, default=str) + "\n")
 
-    notes_path = week_dir / "prompt_improvement_notes.md"
+    notes_path = day_dir / "prompt_improvement_notes.md"
     notes_path.write_text(render_prompt_improvement_notes(events))
     return events
 
@@ -235,12 +234,19 @@ def _feedback_event_key(feedback: dict[str, Any]) -> str:
     return f"{feedback.get('call_id')}|{feedback.get('feedback_type')}|{payload}"
 
 
-def _feedback_week_id(week_dir: Path, profile_runs: list[dict[str, Any]]) -> str:
+def _feedback_day_id(day_dir: Path, profile_runs: list[dict[str, Any]]) -> str:
     for run in profile_runs:
-        week = run.get("week")
-        if isinstance(week, str) and re.search(r"W\d+$", week):
-            return week
-    return week_dir.name
+        day = run.get("day")
+        if isinstance(day, str) and _day_annotation_token(day) is not None:
+            return day
+    return day_dir.name
+
+
+def _day_annotation_token(day: str) -> str | None:
+    match = re.fullmatch(r"(\d{4})-(\d{2})-(\d{2})", day)
+    if match is None:
+        return None
+    return "".join(match.groups())
 
 
 def render_prompt_improvement_notes(events: list[dict[str, Any]]) -> str:
@@ -280,7 +286,7 @@ def render_prompt_improvement_notes(events: list[dict[str, Any]]) -> str:
         for target_prompt, count in target_counts.most_common():
             lines.append(f"- `{target_prompt}.md`: {count}")
     else:
-        lines.append("- No week-scoped `W{N}_Discovery` or `W{N}_Profiler` annotations found.")
+        lines.append("- No day-scoped `D{YYYYMMDD}_Discovery` or `D{YYYYMMDD}_Profiler` annotations found.")
     lines.append("")
 
     lines.append("## Tool Feedback")

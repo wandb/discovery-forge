@@ -29,7 +29,7 @@ def test_env_example_has_required_keys():
 
 def test_gitignore_has_required_entries():
     content = (ROOT / ".gitignore").read_text()
-    for entry in [".env", "weekly_runs/", "__pycache__/", ".venv/", "wandb/"]:
+    for entry in [".env", "daily_runs/", "__pycache__/", ".venv/", "wandb/"]:
         assert entry in content, f"Missing .gitignore entry: {entry}"
 
 

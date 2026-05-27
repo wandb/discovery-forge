@@ -82,13 +82,13 @@ def test_generate_diff_returns_string():
 
 def test_generate_feedback_template_contains_week():
     from autoresearch_researcher.tools.diff import generate_feedback_template
-    result = generate_feedback_template(week="2026-W19")
-    assert "2026-W19" in result
+    result = generate_feedback_template(day="2026-05-19")
+    assert "2026-05-19" in result
 
 
 def test_generate_feedback_template_has_all_sections():
     from autoresearch_researcher.tools.diff import generate_feedback_template
-    result = generate_feedback_template(week="2026-W19")
+    result = generate_feedback_template(day="2026-05-19")
     for section in ["ADD", "FIX", "REMOVE", "REWORD", "BALANCE"]:
         assert section in result
     assert "DiscoveryAgent" in result
@@ -98,7 +98,7 @@ def test_generate_feedback_template_has_all_sections():
 
 def test_generate_feedback_template_has_score_fields():
     from autoresearch_researcher.tools.diff import generate_feedback_template
-    result = generate_feedback_template(week="2026-W19")
+    result = generate_feedback_template(day="2026-05-19")
     assert "Accuracy" in result
     assert "Completeness" in result
 
@@ -109,13 +109,13 @@ def test_diff_cli_creates_diff_md(tmp_path):
     from typer.testing import CliRunner
     from autoresearch_researcher.cli import app
 
-    week_dir = tmp_path / "2026-W19"
+    week_dir = tmp_path / "2026-05-19"
     week_dir.mkdir()
     (week_dir / "draft.md").write_text("# Draft\n\nOriginal content.\n")
     (week_dir / "final.md").write_text("# Final\n\nEdited content.\n\n## New Section\nAdded.\n")
 
     runner = CliRunner()
-    result = runner.invoke(app, ["diff", "--week", "2026-W19", "--output-dir", str(tmp_path)])
+    result = runner.invoke(app, ["diff", "--day", "2026-05-19", "--output-dir", str(tmp_path)])
 
     assert result.exit_code == 0, result.output
     assert (week_dir / "diff.md").exists()
@@ -125,29 +125,29 @@ def test_diff_cli_creates_feedback_template(tmp_path):
     from typer.testing import CliRunner
     from autoresearch_researcher.cli import app
 
-    week_dir = tmp_path / "2026-W19"
+    week_dir = tmp_path / "2026-05-19"
     week_dir.mkdir()
     (week_dir / "draft.md").write_text("# Draft\nContent.\n")
     (week_dir / "final.md").write_text("# Final\nChanged.\n")
 
     runner = CliRunner()
-    runner.invoke(app, ["diff", "--week", "2026-W19", "--output-dir", str(tmp_path)])
+    runner.invoke(app, ["diff", "--day", "2026-05-19", "--output-dir", str(tmp_path)])
 
     assert (week_dir / "feedback.md").exists()
     feedback = (week_dir / "feedback.md").read_text()
-    assert "2026-W19" in feedback
+    assert "2026-05-19" in feedback
 
 
 def test_diff_cli_aborts_if_no_draft(tmp_path):
     from typer.testing import CliRunner
     from autoresearch_researcher.cli import app
 
-    week_dir = tmp_path / "2026-W19"
+    week_dir = tmp_path / "2026-05-19"
     week_dir.mkdir()
     # No draft.md created
 
     runner = CliRunner()
-    result = runner.invoke(app, ["diff", "--week", "2026-W19", "--output-dir", str(tmp_path)])
+    result = runner.invoke(app, ["diff", "--day", "2026-05-19", "--output-dir", str(tmp_path)])
     assert result.exit_code != 0 or "not found" in result.output.lower()
 
 
@@ -155,11 +155,11 @@ def test_diff_cli_aborts_if_no_final(tmp_path):
     from typer.testing import CliRunner
     from autoresearch_researcher.cli import app
 
-    week_dir = tmp_path / "2026-W19"
+    week_dir = tmp_path / "2026-05-19"
     week_dir.mkdir()
     (week_dir / "draft.md").write_text("# Draft\n")
     # No final.md
 
     runner = CliRunner()
-    result = runner.invoke(app, ["diff", "--week", "2026-W19", "--output-dir", str(tmp_path)])
+    result = runner.invoke(app, ["diff", "--day", "2026-05-19", "--output-dir", str(tmp_path)])
     assert result.exit_code != 0 or "not found" in result.output.lower()

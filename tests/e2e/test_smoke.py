@@ -24,10 +24,10 @@ async def test_e2e_smoke_dry_run(tmp_path):
     Dry-run pipeline: no real LLM calls, validates all required outputs are generated.
     Cost must remain $0 (dry-run mode).
     """
-    week = "2026-W99-test"
+    day = "2026-05-29-test"
 
     await run_briefing(
-        week=week,
+        day=day,
         output_dir=tmp_path,
         max_tools=3,
         max_cost_usd=2.0,
@@ -104,7 +104,7 @@ async def test_e2e_smoke_tool_profiles_are_in_scope(tmp_path):
     import yaml
 
     await run_briefing(
-        week="2026-W99-test",
+        day="2026-05-29-test",
         output_dir=tmp_path,
         max_tools=3,
         max_cost_usd=2.0,

@@ -1,6 +1,6 @@
 # autoresearch-researcher
 
-A multi-agent system that runs once a week to survey **autonomous research tools in the experiment-automation space** and produce a publishable comparison guide (Markdown). Tools are accumulated into a global registry, so each new run only profiles tools you haven't seen before — and emits a "this week's changes" report.
+A multi-agent system that runs once a day to survey **autonomous research tools in the experiment-automation space** and produce a publishable comparison guide (Markdown). Tools are accumulated into a global registry, so each new run only profiles tools you haven't seen before — and emits a "today's changes" report.
 
 ---
 
@@ -25,7 +25,7 @@ Orchestrator (CLI)
 ┌─────────────────────────────────────────────────────────────────┐
 │                    autoresearch-researcher                       │
 │                                                                  │
-│   CLI: autoresearch-researcher run --week 2026-W19               │
+│   CLI: autoresearch-researcher run --day 2026-05-19               │
 └─────────────────────────┬───────────────────────────────────────┘
                           │
                           ▼
@@ -34,7 +34,7 @@ Orchestrator (CLI)
 │                  (orchestrator.py)                               │
 │                                                                  │
 │  • Pipeline flow control (Discovery → Profiling → Writing)       │
-│  • Loads ToolRegistry from weekly_runs/_registry/ once per run   │
+│  • Loads ToolRegistry from daily_runs/_registry/ once per run   │
 │  • CostBudget: enforces --max-cost-usd, graceful shutdown        │
 │  • Weave traces: named stage traces + one profile trace per tool │
 │  • run_metadata.json: tokens / cost / elapsed time               │
@@ -77,15 +77,15 @@ Orchestrator (CLI)
 
 Data flow:
 ──────────────────────────────────────────────────────────────────
-weekly_runs/_registry/
+daily_runs/_registry/
   tools.jsonl                       ← global tool index (one row per tool)
   profiles/{slug}.md                ← canonical ToolProfile per tool
   sources.jsonl                     ← cumulative citation sources
 
-weekly_runs/{week}/
+daily_runs/{day}/
   _candidates.jsonl                 ← Discovery output
   _profile_runs.jsonl               ← slug/status/workflow_name/agent_trace_id/weave_call_id per profile trace
-  _new_candidates.jsonl             ← tools profiled for the first time this week
+  _new_candidates.jsonl             ← tools profiled for the first time today
   _updated_tools.jsonl              ← tools whose stars/last_commit changed
   feedback_events.jsonl             ← Weave human feedback ingested by call id
   prompt_improvement_notes.md       ← maintainer-facing prompt improvement notes
@@ -107,7 +107,7 @@ Weave trace model:
 📦 stage2_profile_rejected-c              ← rejected tools are reviewable too
 📦 stage3_writer                          ← WriterAgent SDK workflow
 
-_profile_runs.jsonl links the week/run_id to each tool's workflow_name, agent_trace_id, and weave_call_id.
+_profile_runs.jsonl links the day/run_id to each tool's workflow_name, agent_trace_id, and weave_call_id.
 ```
 
 ### Per-agent role summary
@@ -124,16 +124,16 @@ ProfilerAgent's scope filter is the most important safety net: even if Discovery
 
 ---
 
-## Weekly Accumulation Model
+## Daily Accumulation Model
 
 ```
-weekly_runs/
+daily_runs/
 ├── _registry/                       ← global, persistent across weeks
 │   ├── tools.jsonl                  # cumulative tool index
 │   ├── profiles/{slug}.md           # canonical profiles
 │   └── sources.jsonl
 │
-├── 2026-W19/                        ← per-week change log
+├── 2026-05-19/                        ← per-day change log
 │   ├── run_metadata.json             # run_id, prompt hashes, counts, tokens, cost
 │   ├── _candidates.jsonl             # Discovery output
 │   ├── _profile_runs.jsonl          # per-tool trace links
@@ -145,11 +145,11 @@ weekly_runs/
 │   ├── draft.md
 │   └── comparison_table.md
 │
-└── 2026-W20/
+└── 2026-05-20/
     └── ...
 ```
 
-Each weekly run starts by loading the registry. DiscoveryAgent calls `is_known_tool(url)` before saving any candidate — already-known tools are skipped, saving search / LLM cost. ProfilerAgent only profiles new candidates; metadata changes (stars, last commit) on existing tools are detected and logged to `_updated_tools.jsonl`. Each candidate profile attempt is recorded in `_profile_runs.jsonl` with the `run_id`, status, `workflow_name`, `agent_trace_id`, prompt hash, and Weave call ID so a human can review and annotate that tool trace directly. WriterAgent reads all profiles from the registry and the per-week change files.
+Each daily run starts by loading the registry. DiscoveryAgent calls `is_known_tool(url)` before saving any candidate — already-known tools are skipped, saving search / LLM cost. ProfilerAgent only profiles new candidates; metadata changes (stars, last commit) on existing tools are detected and logged to `_updated_tools.jsonl`. Each candidate profile attempt is recorded in `_profile_runs.jsonl` with the `run_id`, status, `workflow_name`, `agent_trace_id`, prompt hash, and Weave call ID so a human can review and annotate that tool trace directly. WriterAgent reads all profiles from the registry and the per-day change files.
 
 ---
 
@@ -181,29 +181,29 @@ cp .env.example .env
 
 ## Usage
 
-### Run a weekly briefing
+### Run a daily briefing
 
 ```bash
-uv run autoresearch-researcher run --week 2026-W19
+uv run autoresearch-researcher run --day 2026-05-19
 ```
 
 Flags:
 
 | Flag | Default | Purpose |
 |------|---------|---------|
-| `--week` | (required) | ISO week id (e.g. `2026-W19`) |
+| `--day` | (required) | ISO day id (e.g. `2026-05-19`) |
 | `--max-tools` | 12 | Maximum candidates ProfilerAgent will process |
 | `--max-cost-usd` | 20.0 | Hard cost ceiling — graceful shutdown on overage |
 | `--search-backend` | `serpapi` | Search backend: `serpapi` or `perplexity` |
 | `--dry-run` | false | Validate the pipeline with no LLM calls |
-| `--rerun` | false | Allow re-running an existing week (auto-backs up the previous folder) |
+| `--rerun` | false | Allow re-running an existing day (auto-backs up the previous folder) |
 
 ### Generate diff after human review
 
 After you write `final.md`:
 
 ```bash
-uv run autoresearch-researcher diff --week 2026-W19
+uv run autoresearch-researcher diff --day 2026-05-19
 ```
 
 Produces `diff.md` (changes classified ADD / FIX / REMOVE / REWORD / BALANCE) and a `feedback.md` template.
@@ -213,7 +213,7 @@ Produces `diff.md` (changes classified ADD / FIX / REMOVE / REWORD / BALANCE) an
 After annotating per-tool `stage2_profile_<tool>` calls in Weave:
 
 ```bash
-uv run autoresearch-researcher feedback ingest --week 2026-W19
+uv run autoresearch-researcher feedback ingest --day 2026-05-19
 ```
 
 Produces `feedback_events.jsonl` and `prompt_improvement_notes.md`. This does not rewrite prompts automatically; it creates reviewable notes for improving `instructions/*.md`.
@@ -223,7 +223,7 @@ Produces `feedback_events.jsonl` and `prompt_improvement_notes.md`. This does no
 After ingesting feedback:
 
 ```bash
-uv run autoresearch-researcher improve propose --week 2026-W19
+uv run autoresearch-researcher improve propose --day 2026-05-19
 ```
 
 This runs the `PromptImprovementProposerAgent`. It reads every free-text feedback event in `feedback_events.jsonl` together with the current contents of `instructions/discovery.md`, `instructions/profiler.md`, and `instructions/writer.md`, then writes a concrete plan to `prompt_improvement_plan.md`. The plan groups failure modes by agent and proposes exact prompt edits (including diff snippets). The proposer never modifies Python code; anything that requires a code change is listed under "Out of scope (code change required)".
@@ -233,12 +233,12 @@ This command is traced in Weave as `improve_propose`, with the plan Markdown in 
 To apply the saved plan to `instructions/*.md`:
 
 ```bash
-uv run autoresearch-researcher improve apply --week 2026-W19
+uv run autoresearch-researcher improve apply --day 2026-05-19
 ```
 
 This runs the `PromptImprovementApplierAgent`. It reads `prompt_improvement_plan.md` and the current instruction files, then calls `update_discovery_instructions`, `update_profiler_instructions`, and/or `update_writer_instructions` to rewrite only the prompt files the plan flags for change. A summary of changed paths is written to `prompt_improvement_applied.md`. Python code is never touched.
 
-Whenever any instruction file is updated, `improve apply` immediately publishes the new instruction content as Weave `StringPrompt` objects. The resulting `prompt_refs` appear in both the `improve_apply` trace output and `prompt_improvement_applied.md`, so the very next weekly run picks up the updated versions without any manual step. When the agent decides nothing needs to change, publishing is skipped.
+Whenever any instruction file is updated, `improve apply` immediately publishes the new instruction content as Weave `StringPrompt` objects. The resulting `prompt_refs` appear in both the `improve_apply` trace output and `prompt_improvement_applied.md`, so the very next daily run picks up the updated versions without any manual step. When the agent decides nothing needs to change, publishing is skipped.
 
 This command is traced in Weave as `improve_apply`, with the changed prompt files and the new prompt refs in the call output.
 

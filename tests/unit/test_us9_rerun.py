@@ -15,15 +15,15 @@ runner = CliRunner()
 # ── --rerun flag backs up existing folder ─────────────────────────────────────
 
 def test_rerun_backs_up_existing_folder(tmp_path):
-    """--rerun must rename the existing week folder to a backup before starting fresh."""
-    from autoresearch_researcher.orchestrator import backup_week_dir
+    """--rerun must rename the existing day folder to a backup before starting fresh."""
+    from autoresearch_researcher.orchestrator import backup_run_dir
 
-    week_dir = tmp_path / "2026-W99"
+    week_dir = tmp_path / "2026-05-28"
     week_dir.mkdir()
     (week_dir / "draft.md").write_text("existing draft")
-    (week_dir / "run_metadata.json").write_text('{"week": "2026-W99"}')
+    (week_dir / "run_metadata.json").write_text('{"day": "2026-05-28"}')
 
-    backup_path = backup_week_dir(week_dir)
+    backup_path = backup_run_dir(week_dir)
 
     assert not week_dir.exists() or backup_path != week_dir
     assert backup_path.exists()
@@ -32,15 +32,15 @@ def test_rerun_backs_up_existing_folder(tmp_path):
 
 def test_rerun_backup_naming_is_sequential(tmp_path):
     """Multiple reruns produce sequentially numbered backups."""
-    from autoresearch_researcher.orchestrator import backup_week_dir
+    from autoresearch_researcher.orchestrator import backup_run_dir
 
-    week_dir = tmp_path / "2026-W99"
+    week_dir = tmp_path / "2026-05-28"
 
     for i in range(3):
         week_dir.mkdir(exist_ok=True)
         (week_dir / "run.txt").write_text(f"run {i}")
-        backup = backup_week_dir(week_dir)
-        assert backup.name.startswith("2026-W99_backup")
+        backup = backup_run_dir(week_dir)
+        assert backup.name.startswith("2026-05-28_backup")
         assert backup.exists()
 
 
@@ -49,12 +49,12 @@ def test_rerun_cli_creates_backup_and_restarts(tmp_path):
         mock_run.return_value = None
 
         # First run
-        week_dir = tmp_path / "2026-W99"
+        week_dir = tmp_path / "2026-05-28"
         week_dir.mkdir()
         (week_dir / "draft.md").write_text("old draft")
 
         result = runner.invoke(app, [
-            "run", "--week", "2026-W99",
+            "run", "--day", "2026-05-28",
             "--output-dir", str(tmp_path),
             "--rerun",
         ])

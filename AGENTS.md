@@ -61,7 +61,7 @@ tests/
 ├── e2e/
 └── fixtures/
 
-weekly_runs/                # output (.gitignore)
+daily_runs/                # output (.gitignore)
 ├── _registry/              # global tool accumulator (persistent across weeks)
 └── .gitkeep
 ```
@@ -135,39 +135,39 @@ Weave auto-captures every agent run, tool call, and model invocation through the
 import weave
 from agents import RunConfig, set_trace_processors
 
-def init_observability(week_id: str):
+def init_observability(day_id: str):
     weave.init("wandb-smle/autoresearch-researcher")
     set_trace_processors([AutoresearchWeaveTracingProcessor()])
 
-# Tag each weekly run and per-tool profile call via attributes
+# Tag each daily run and per-tool profile call via attributes
 import weave
 
-async def run_briefing(week_id: str):
-    with weave.attributes({"week": week_id, "stage": "discovery"}):
+async def run_briefing(day_id: str):
+    with weave.attributes({"day": day_id, "stage": "discovery"}):
         await Runner.run(
             discovery_agent,
             ...,
             run_config=RunConfig(
                 workflow_name="stage1_discovery",
                 group_id=run_id,
-                trace_metadata={"week": week_id, "run_id": run_id, "stage": "discovery"},
+                trace_metadata={"day": day_id, "run_id": run_id, "stage": "discovery"},
             ),
         )
     for candidate in candidates:
-        await profile_tool_candidate(candidate, week=week_id, run_id=run_id, ...)
-    with weave.attributes({"week": week_id, "stage": "writing"}):
+        await profile_tool_candidate(candidate, day=day_id, run_id=run_id, ...)
+    with weave.attributes({"day": day_id, "stage": "writing"}):
         await Runner.run(
             writer_agent,
             ...,
             run_config=RunConfig(
                 workflow_name="stage3_writer",
                 group_id=run_id,
-                trace_metadata={"week": week_id, "run_id": run_id, "stage": "writing"},
+                trace_metadata={"day": day_id, "run_id": run_id, "stage": "writing"},
             ),
         )
 ```
 
-`profile_tool_candidate` is an orchestrator helper, not a displayed Weave op. The displayed review unit is the named Agents SDK trace `stage2_profile_{slug}`. It is called once per candidate and linked from `_profile_runs.jsonl` by `weave_call_id`, `agent_trace_id`, `workflow_name`, `run_id`, `slug`, `status`, and the profiler prompt hash. Do not add a separate `weekly_run` trace unless it carries real diagnostic detail; the weekly summary belongs in `run_metadata.json`.
+`profile_tool_candidate` is an orchestrator helper, not a displayed Weave op. The displayed review unit is the named Agents SDK trace `stage2_profile_{slug}`. It is called once per candidate and linked from `_profile_runs.jsonl` by `weave_call_id`, `agent_trace_id`, `workflow_name`, `run_id`, `slug`, `status`, and the profiler prompt hash. Do not add a separate `daily_run` trace unless it carries real diagnostic detail; the daily summary belongs in `run_metadata.json`.
 
 Always pass a named `RunConfig` to `Runner.run()` so Weave shows `stage1_discovery`, `stage2_profile_{slug}`, or `stage3_writer` instead of the SDK default `Agent workflow`. `init_observability()` uses `AutoresearchWeaveTracingProcessor`, which records the Weave call ID for each Agents trace and hides SDK task/turn spans while re-parenting their child tool calls to the nearest visible agent call. Stage 2 should read as `stage2_profile_{slug} → ProfilerAgent → openai.responses.create/search_web/save_*` instead of `profile_tool_candidate → Agent workflow → Unknown`.
 
@@ -237,7 +237,7 @@ async def test_profiler_filters_out_deep_research():
 @pytest.mark.expensive
 async def test_e2e_smoke_run(tmp_path):
     result = await run_weekly_briefing(
-        week="2026-W99-test",
+        day="2026-05-29-test",
         max_tools=3,
         max_cost_usd=2.0,
         output_dir=tmp_path,
@@ -345,5 +345,5 @@ For every User Story:
 - US8: `difflib.unified_diff` lines end with `\n`, so classify regexes need `line.rstrip()` first — otherwise the `^` anchor collides with trailing whitespace and produces false positives.
 - US9: `shutil.move(str(src), str(dst))` should pass strings — Python ≤3.11 can fail with `Path` objects directly. Wrapping with `str()` is the safe form.
 - Smoke e2e: in dry-run mode, `sources.jsonl` must align 1:1 with `[^N]` footnotes in `draft.md` for `verify_citations` to pass — generate source_ids and footnote numbers in lockstep so there are no orphan citations.
-- Trace redesign: keep `run_briefing()` as the plain orchestrator and use named Agents SDK traces for visible stages. Stage 2 should display as `stage2_profile_{slug} → ProfilerAgent`; weekly rollups stay in `run_metadata.json` unless they need real trace detail.
+- Trace redesign: keep `run_briefing()` as the plain orchestrator and use named Agents SDK traces for visible stages. Stage 2 should display as `stage2_profile_{slug} → ProfilerAgent`; daily rollups stay in `run_metadata.json` unless they need real trace detail.
 - US11/US12 rewrite: rule-based classification of feedback by a `prompt_issue_type` field does not survive free-text human annotations. `improve propose` and `improve apply` are now real LLM agents (`PromptImprovementProposerAgent`, `PromptImprovementApplierAgent`) — propose synthesizes the plan, apply rewrites instruction files. Tests mock `_run_proposer_agent` / `_run_applier_agent` rather than the rule-based classifier.

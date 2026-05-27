@@ -10,8 +10,8 @@ def test_append_profile_run_writes_trace_contract(tmp_path):
     from autoresearch_researcher.orchestrator import append_profile_run
 
     append_profile_run(tmp_path, {
-        "week": "2026-W99",
-        "run_id": "2026-W99-test",
+        "day": "2026-05-28",
+        "run_id": "2026-05-29-test",
         "slug": "tool-a",
         "name": "Tool A",
         "url": "https://example.com/tool-a",
@@ -23,8 +23,8 @@ def test_append_profile_run_writes_trace_contract(tmp_path):
 
     rows = [json.loads(line) for line in (tmp_path / "_profile_runs.jsonl").read_text().splitlines()]
     assert rows == [{
-        "week": "2026-W99",
-        "run_id": "2026-W99-test",
+        "day": "2026-05-28",
+        "run_id": "2026-05-29-test",
         "slug": "tool-a",
         "name": "Tool A",
         "url": "https://example.com/tool-a",
@@ -40,7 +40,7 @@ def test_stage_run_config_names_agent_workflow():
 
     config = stage_run_config(
         workflow_name="stage2_profile_tool-a",
-        week="2026-W99",
+        day="2026-05-28",
         run_id="run-123",
         stage="profiling",
         trace_id="trace_123",
@@ -51,7 +51,7 @@ def test_stage_run_config_names_agent_workflow():
     assert config.trace_id == "trace_123"
     assert config.group_id == "run-123"
     assert config.trace_metadata == {
-        "week": "2026-W99",
+        "day": "2026-05-28",
         "run_id": "run-123",
         "stage": "profiling",
         "tool_name": "Tool A",
@@ -195,7 +195,7 @@ def test_profile_review_output_for_accepted_profile():
     assert output["verdict"] == "accepted"
     assert output["tool_name"] == "Tool A"
     assert output["primary_url"] == "https://github.com/example/tool-a"
-    assert output["profile_path"] == "weekly_runs/_registry/profiles/tool-a.md"
+    assert output["profile_path"] == "daily_runs/_registry/profiles/tool-a.md"
     assert "Tool Profile Review: Tool A" in output["profile_review_markdown"]
     assert "Needs GPU" in output["profile_review_markdown"]
 
@@ -304,7 +304,7 @@ async def test_dry_run_writes_profile_runs_and_prompt_hashes(tmp_path):
     from autoresearch_researcher.orchestrator import run_briefing
 
     await run_briefing(
-        week="2026-W99",
+        day="2026-05-28",
         output_dir=tmp_path,
         max_tools=3,
         max_cost_usd=2.0,
@@ -331,7 +331,7 @@ def test_feedback_ingest_writes_events_and_notes(tmp_path):
     from autoresearch_researcher.tools.feedback import ingest_feedback
 
     profile_run = {
-        "week": "2026-W99",
+        "day": "2026-05-28",
         "run_id": "run-1",
         "slug": "tool-a",
         "name": "Tool A",

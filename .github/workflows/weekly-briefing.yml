@@ -1,13 +1,13 @@
-name: Weekly Briefing
+name: Daily Briefing
 
 on:
-  # KST Monday 9:00 AM = UTC Monday 00:00
+  # KST daily 9:00 AM = UTC daily 00:00
   schedule:
-    - cron: '0 0 * * 1'
+    - cron: '0 0 * * *'
   workflow_dispatch:
     inputs:
-      week:
-        description: 'ISO week id (defaults to current week)'
+      day:
+        description: 'Run date in YYYY-MM-DD (defaults to current KST date)'
         required: false
         type: string
       max_cost_usd:
@@ -21,7 +21,7 @@ permissions:
   pull-requests: write
 
 concurrency:
-  group: weekly-briefing
+  group: daily-briefing
   cancel-in-progress: false
 
 jobs:
@@ -44,18 +44,18 @@ jobs:
       - name: Sync dependencies
         run: uv sync
 
-      - name: Resolve week id
-        id: week
+      - name: Resolve day id
+        id: day
         run: |
-          if [ -n "${{ inputs.week }}" ]; then
-            echo "week=${{ inputs.week }}" >> "$GITHUB_OUTPUT"
+          if [ -n "${{ inputs.day }}" ]; then
+            echo "day=${{ inputs.day }}" >> "$GITHUB_OUTPUT"
           else
-            echo "week=$(date -u +'%G-W%V')" >> "$GITHUB_OUTPUT"
+            echo "day=$(TZ=Asia/Seoul date +'%Y-%m-%d')" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Prepare result branch
         run: |
-          BRANCH="weekly/${{ steps.week.outputs.week }}"
+          BRANCH="daily/${{ steps.day.outputs.day }}"
           git fetch origin "$BRANCH" || true
           if git show-ref --verify --quiet "refs/remotes/origin/$BRANCH"; then
             git switch -C "$BRANCH" "origin/$BRANCH"
@@ -63,7 +63,7 @@ jobs:
             git switch -c "$BRANCH"
           fi
 
-      - name: Run weekly briefing
+      - name: Run daily briefing
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           SERPAPI_API_KEY: ${{ secrets.SERPAPI_API_KEY }}
@@ -72,7 +72,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           uv run autoresearch-researcher run \
-            --week "${{ steps.week.outputs.week }}" \
+            --day "${{ steps.day.outputs.day }}" \
+            --output-dir daily_runs \
             --max-cost-usd "${{ inputs.max_cost_usd || '15' }}" \
             --rerun
 
@@ -83,13 +84,13 @@ jobs:
         run: |
           git config user.name "autoresearch-bot"
           git config user.email "autoresearch-bot@users.noreply.github.com"
-          BRANCH="weekly/${{ steps.week.outputs.week }}"
+          BRANCH="daily/${{ steps.day.outputs.day }}"
 
-          git add -f weekly_runs/
+          git add -f daily_runs/
           if git diff --cached --quiet; then
             echo "No new files to commit."
           else
-            git commit -m "weekly: ${{ steps.week.outputs.week }} briefing"
+            git commit -m "daily: ${{ steps.day.outputs.day }} briefing"
             git push -u origin "$BRANCH"
           fi
 
@@ -99,6 +100,6 @@ jobs:
             gh pr create \
               --base main \
               --head "$BRANCH" \
-              --title "weekly: ${{ steps.week.outputs.week }} briefing" \
-              --body "Automated weekly briefing output for ${{ steps.week.outputs.week }}."
+              --title "daily: ${{ steps.day.outputs.day }} briefing" \
+              --body "Automated daily briefing output for ${{ steps.day.outputs.day }}."
           fi
