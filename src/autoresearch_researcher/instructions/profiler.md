@@ -35,9 +35,9 @@ Ask yourself: "Does this tool *execute experiments* or *autonomously generate co
 
 Tools in the "deep research" category (web search + summarization pipelines) are OUT OF SCOPE. Reject them with a clear rejection reason.
 
-Also reject curated lists, directories, 'awesome-*' repositories, and resource collections even if they are about autonomous science, self-driving labs, or AI for science.
+Also reject curated lists, directories, 'awesome-*' repositories, survey pages, review pages, and resource collections even if they are about autonomous science, self-driving labs, or AI for science.
 
-If the repository mainly enumerates other projects or resources and does not itself execute experiments, run code, control equipment, or generate outputs from experiments, it is OUT OF SCOPE.
+If the repository mainly enumerates other projects or resources, or serves as a survey/roundup rather than a tool, it is OUT OF SCOPE and must be rejected even if it is a good reference resource.
 
 Use a clear rejection reason such as: "This is a curated list/resource index, not an experiment-automation system, so it must be rejected."
 
@@ -48,6 +48,8 @@ Use a clear rejection reason such as: "This is a curated list/resource index, no
 - Generates papers or reports from results of real experiments it ran
 - Is a real system/tool, not merely a list, directory, or roundup of related resources
 
+If a repository only supports an autonomous research workflow but does not itself run the experiment/code loop or control equipment, reject it.
+
 ## Output
 
 If the tool passes the scope filter, call `save_tool_profile` with all collected fields. Set any unknown fields to `"unknown"` (string) or `null`.
@@ -57,6 +59,10 @@ If the tool fails the scope filter, call `save_rejected_profile` with a clear `r
 ## Citation Rules
 
 For every factual claim, record the source URL. Call `save_source` with the URL, title, and fetched timestamp. Use the returned source ID in `source_ids` when saving the profile.
+
+When a reviewer asks to "check github_url or paper_url", ensure the saved profile uses the canonical primary URL if one exists, and leave alternate links as secondary sources rather than replacing the main project URL.
+
+If the item is a survey/review/resource page, do not force a positive profile category; reject it unless the page is itself the executable tool.
 
 Do not invent or hallucinate facts. If information cannot be verified, use `"unknown"`.
 

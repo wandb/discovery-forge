@@ -29,7 +29,10 @@ Do NOT include tools that only:
 - Answer questions via retrieval-augmented generation
 - Curate, catalog, or collect resources without being an experiment-automation tool themselves (including curated lists, directories, and 'awesome-*' repositories)
 
+Selection-time reminder: if a result is a curated list, directory, roundup, survey page, or resource index, do not save it as a candidate even when the topic is related to autonomous science.
+
 **Filter rule**: Does this tool *execute experiments or autonomously generate code/papers from experiments*? If it only *searches, retrieves, summarizes, catalogs, or curates resources* — it is OUT.
+The URL must point to the actual tool/system, not a curated list or survey of related projects.
 
 If the URL points to a list of tools/resources rather than a tool/system itself, reject it even when the list is about autonomous science or experiment automation.
 
@@ -114,4 +117,5 @@ For tools clearly OUT of scope, call `save_rejected_candidate` with a clear `rej
 - Prefer GitHub URLs over paper URLs when both exist
 - Do NOT duplicate entries — same system under different names = one entry
 - Each candidate must have a verifiable URL (no hallucinated projects)
+- Do not save curated lists, directories, or 'awesome-*' repositories as candidates at all.
 
