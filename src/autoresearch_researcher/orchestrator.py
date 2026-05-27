@@ -802,6 +802,7 @@ async def run_briefing(
     """
     from autoresearch_researcher.agents.discovery import build_discovery_agent
     from autoresearch_researcher.agents.writer import build_writer_agent, generate_highlights
+    from autoresearch_researcher.tools.feed import build_feed_output
     from autoresearch_researcher.tools.persistence import load_candidates
     from autoresearch_researcher.tools.prompts import (
         load_local_instruction_prompts,
@@ -862,6 +863,7 @@ async def run_briefing(
             rejected_count=0,
         )
         update_metadata_costs(metadata_path, 0.0, 0, 0)
+        build_feed_output(output_dir, registry=None, day=day)
         return
 
     try:
@@ -1012,6 +1014,8 @@ async def run_briefing(
         )
         if metadata_path.exists():
             update_metadata_costs(metadata_path, total_cost, prompt_tokens, completion_tokens)
+        if (output_dir / "draft.md").exists():
+            build_feed_output(output_dir, registry=registry, day=day)
 
 
 def _extract_usage(result) -> tuple[int, int, float]:

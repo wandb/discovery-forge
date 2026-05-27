@@ -83,6 +83,10 @@ daily_runs/_registry/
   sources.jsonl                     ← cumulative citation sources
 
 daily_runs/{day}/
+  manifest.json                     ← Agentforge feed manifest
+  report.md                         ← feed report body (copy of draft.md)
+  items/{slug}.json                 ← one structured feed item per accepted profile
+  raw/                              ← copy of source artifacts for debugging/sync fallback
   _candidates.jsonl                 ← Discovery output
   _profile_runs.jsonl               ← slug/status/workflow_name/agent_trace_id/weave_call_id per profile trace
   _new_candidates.jsonl             ← tools profiled for the first time today
