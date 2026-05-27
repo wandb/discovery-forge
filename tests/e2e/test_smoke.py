@@ -37,6 +37,10 @@ async def test_e2e_smoke_dry_run(tmp_path):
     # ── 1. Output structure ───────────────────────────────────────────────────
     assert (tmp_path / "draft.md").exists(), "draft.md must exist"
     assert (tmp_path / "comparison_table.md").exists(), "comparison_table.md must exist"
+    assert (tmp_path / "manifest.json").exists(), "manifest.json must exist"
+    assert (tmp_path / "report.md").exists(), "report.md must exist"
+    assert (tmp_path / "items").exists(), "items/ directory must exist"
+    assert (tmp_path / "raw").exists(), "raw/ directory must exist"
     assert (tmp_path / "_candidates.jsonl").exists(), "_candidates.jsonl must exist"
     assert (tmp_path / "_profile_runs.jsonl").exists(), "_profile_runs.jsonl must exist"
     metadata = json.loads((tmp_path / "run_metadata.json").read_text())

@@ -47,6 +47,7 @@ src/autoresearch_researcher/
 │   ├── citations.py        # SourceRegistry + verify_citations
 │   ├── registry.py         # ToolRegistry (global accumulator)
 │   ├── feedback.py         # ingest Weave feedback by profile call id
+│   ├── feed.py             # Agentforge manifest/items/raw export
 │   └── diff.py             # draft vs final diff
 └── schemas/                # pydantic models
     ├── __init__.py
@@ -62,7 +63,7 @@ tests/
 └── fixtures/
 
 daily_runs/                # output (.gitignore)
-├── _registry/              # global tool accumulator (persistent across weeks)
+├── _registry/              # global tool accumulator (persistent across days)
 └── .gitkeep
 ```
 

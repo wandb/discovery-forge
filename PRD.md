@@ -46,6 +46,10 @@ daily_runs/
 │   ├── profiles/{tool_slug}.md      # canonical per-tool detail cards
 │   └── sources.jsonl                # cumulative citation sources
 └── 2026-05-19/
+    ├── manifest.json                # Agentforge feed manifest
+    ├── report.md                    # feed report body (copy of draft.md)
+    ├── items/{tool_slug}.json       # structured feed item payloads
+    ├── raw/                         # source artifacts copied for debugging/fallback sync
     ├── run_metadata.json            # run_id, prompt hashes, timestamps, tokens, cost, counts
     ├── _candidates.jsonl            # Discovery output
     ├── _profile_runs.jsonl          # per-tool Weave trace links

@@ -325,6 +325,10 @@ async def test_dry_run_writes_profile_runs_and_prompt_hashes(tmp_path):
     assert all(row["run_id"] == metadata["run_id"] for row in rows)
     assert all(row["workflow_name"].startswith("stage2_profile_") for row in rows)
     assert all(row["search_backend"] == "serpapi" for row in rows)
+    assert (tmp_path / "manifest.json").exists()
+    assert (tmp_path / "report.md").exists()
+    assert (tmp_path / "items").exists()
+    assert (tmp_path / "raw" / "run_metadata.json").exists()
 
 
 def test_feedback_ingest_writes_events_and_notes(tmp_path):
