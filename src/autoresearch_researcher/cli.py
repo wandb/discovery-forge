@@ -18,8 +18,10 @@ load_dotenv()
 app = typer.Typer(name="autoresearch-researcher", help="Daily tool briefing agent for experiment automation research.")
 feedback_app = typer.Typer(help="Ingest human feedback from Weave traces.")
 improve_app = typer.Typer(help="Generate prompt-only improvement proposals.")
+eval_app = typer.Typer(help="Build and run evaluation datasets.")
 app.add_typer(feedback_app, name="feedback")
 app.add_typer(improve_app, name="improve")
+app.add_typer(eval_app, name="eval")
 
 DEFAULT_OUTPUT_DIR = Path("daily_runs")
 DEFAULT_MAX_TOOLS = 20
@@ -180,6 +182,46 @@ def feedback_ingest(
         raise typer.Exit(code=2)
 
     typer.echo(f"Ingested {len(events)} feedback events into {day_dir / 'feedback_events.jsonl'}")
+
+
+@eval_app.command("run-profiler")
+def eval_run_profiler(
+    dataset_path: Optional[Path] = typer.Option(None, "--dataset-path", help="Local JSONL dataset path"),
+    dataset_ref: Optional[str] = typer.Option(None, "--dataset-ref", help="Weave Dataset ref URI"),
+    output_dir: Path = typer.Option(Path("eval_runs/profiler"), help="Directory for profiler eval artifacts"),
+    search_backend: SearchBackendOption = typer.Option(
+        SearchBackendOption(DEFAULT_SEARCH_BACKEND),
+        "--search-backend",
+        help="Search backend for Profiler",
+    ),
+    limit: Optional[int] = typer.Option(None, "--limit", help="Optional row limit for smoke runs"),
+) -> None:
+    """Run ProfilerAgent against a profiler evaluation dataset in Weave."""
+    if (dataset_path is None) == (dataset_ref is None):
+        typer.echo("ERROR: Provide exactly one of --dataset-path or --dataset-ref.", err=True)
+        raise typer.Exit(code=1)
+    if dataset_path is not None and not dataset_path.exists():
+        typer.echo(f"ERROR: {dataset_path} not found.", err=True)
+        raise typer.Exit(code=1)
+
+    try:
+        from autoresearch_researcher.orchestrator import init_observability
+        from autoresearch_researcher.tools.evaluation import run_profiler_evaluation
+
+        init_observability(day_id="profiler-eval")
+        result = run_profiler_evaluation(
+            dataset_path=dataset_path,
+            dataset_ref=dataset_ref,
+            output_dir=output_dir,
+            search_backend=search_backend.value,
+            limit=limit,
+        )
+    except Exception as e:
+        typer.echo(f"Profiler evaluation failed: {e}", err=True)
+        raise typer.Exit(code=2)
+
+    typer.echo("Profiler evaluation complete.")
+    typer.echo(str(result))
 
 
 @improve_app.command("propose")
