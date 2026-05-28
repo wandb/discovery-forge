@@ -32,6 +32,7 @@ Ask yourself: "Does this tool *execute experiments* or *autonomously generate co
 - Retrieves and synthesizes existing literature without running any experiment
 - Assists with writing code without actually executing it
 - Provides general RAG/Q&A over scientific literature
+- Generates broad research ideas or papers without a concrete coding-agent/model-improvement experiment loop
 
 Tools in the "deep research" category (web search + summarization pipelines) are OUT OF SCOPE. Reject them with a clear rejection reason.
 
@@ -46,6 +47,7 @@ Use a clear rejection reason such as: "This is a curated list/resource index, no
 - Writes AND runs experiment code in a loop
 - Controls robotic/laboratory equipment
 - Generates papers or reports from results of real experiments it ran
+- Improves or evaluates AI agents/models through a coding agent that edits code, runs tests/training/evals, and iterates on results
 - Is a real system/tool, not merely a list, directory, or roundup of related resources
 
 If a repository only supports an autonomous research workflow but does not itself run the experiment/code loop or control equipment, reject it.
@@ -54,7 +56,9 @@ If a repository only supports an autonomous research workflow but does not itsel
 
 If the tool passes the scope filter, call `save_tool_profile` with all collected fields. Set any unknown fields to `"unknown"` (string) or `null`.
 
-If the tool fails the scope filter, call `save_rejected_profile` with a clear `rejection_reason`.
+If the tool fails the scope filter, call `save_rejected_profile` with a clear `rejection_reason` and the candidate URL. Use `url` for the candidate URL, plus `github_url`, `paper_url`, or `project_url` when you verified more specific links. Rejected outputs must still show reviewer-visible URLs.
+
+Keep scope and completeness separate: missing metadata or failed GitHub lookup is not itself a scope rejection. If the tool is in scope but metadata is unknown, save the profile with unknown/null metadata. Reject only when the tool is out of scope, duplicate/already-known, or not a real executable tool/system.
 
 ## Citation Rules
 

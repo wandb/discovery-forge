@@ -22,12 +22,12 @@ app.add_typer(feedback_app, name="feedback")
 app.add_typer(improve_app, name="improve")
 
 DEFAULT_OUTPUT_DIR = Path("daily_runs")
-DEFAULT_MAX_TOOLS = 12
+DEFAULT_MAX_TOOLS = 20
 DEFAULT_MAX_COST_USD = 20.0
 
 
 class SearchBackendOption(str, Enum):
-    serpapi = "serpapi"
+    serper = "serper"
     perplexity = "perplexity"
 
 

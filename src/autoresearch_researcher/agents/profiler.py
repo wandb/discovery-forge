@@ -144,13 +144,31 @@ def build_profiler_agent(
     rejected_file = output_dir / "_rejected_profiles.jsonl"
 
     @function_tool
-    def save_rejected_profile_tool(slug: str, name: str, rejection_reason: str) -> str:
-        """Reject a tool that does not meet the experiment-automation scope."""
+    def save_rejected_profile_tool(
+        slug: str,
+        name: str,
+        rejection_reason: str,
+        url: str | None = None,
+        github_url: str | None = None,
+        paper_url: str | None = None,
+        project_url: str | None = None,
+    ) -> str:
+        """Reject a tool that does not meet scope, preserving reviewer-visible URLs."""
         import json
+        rejected = RejectedProfile(
+            slug=slug,
+            name=name,
+            url=url,
+            github_url=github_url,
+            paper_url=paper_url,
+            project_url=project_url,
+            rejection_reason=rejection_reason,
+        )
         rejected_file.parent.mkdir(parents=True, exist_ok=True)
         with rejected_file.open("a") as f:
-            f.write(json.dumps({"slug": slug, "name": name, "rejection_reason": rejection_reason}) + "\n")
-        return f"Rejected: {name} — {rejection_reason}"
+            f.write(json.dumps(rejected.model_dump()) + "\n")
+        primary_url = github_url or project_url or paper_url or url or "unknown"
+        return f"Rejected: {name} ({primary_url}) — {rejection_reason}"
 
     @function_tool
     def fetch_github_metadata_tool(github_url: str) -> str:

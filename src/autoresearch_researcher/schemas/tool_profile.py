@@ -26,4 +26,8 @@ class ToolProfile(BaseModel):
 class RejectedProfile(BaseModel):
     slug: str
     name: str
+    url: str | None = None
+    github_url: str | None = None
+    paper_url: str | None = None
+    project_url: str | None = None
     rejection_reason: str

@@ -55,7 +55,7 @@ Orchestrator (CLI)
 │             │     │                 │   │              │
 │ Tools:       │     │ Tools:          │   │ Tools:       │
 │ search_web  │     │ search_web      │   │ read_tool_   │
-│ (SerpAPI by │     │ (SerpAPI by     │   │ profiles     │
+│ (Serper by  │     │ (Serper by      │   │ profiles     │
 │  default)   │     │  default)       │   │              │
 │ is_known_   │     │ fetch_github_   │   │ read_high-   │
 │ _tool       │     │ _metadata       │   │ lights       │
@@ -166,7 +166,7 @@ git clone <repo>
 cd autoresearch-researcher
 uv sync
 cp .env.example .env
-# Fill OPENAI_API_KEY, SERPAPI_API_KEY, WANDB_API_KEY in .env
+# Fill OPENAI_API_KEY, SERPER_API_KEY, WANDB_API_KEY in .env
 ```
 
 ## Environment variables
@@ -174,7 +174,7 @@ cp .env.example .env
 | Variable | Required | Purpose |
 |----------|----------|---------|
 | `OPENAI_API_KEY` | ✅ | OpenAI Chat Completions |
-| `SERPAPI_API_KEY` | ✅ | Default DiscoveryAgent + ProfilerAgent web search |
+| `SERPER_API_KEY` | ✅ | Default DiscoveryAgent + ProfilerAgent web search |
 | `PERPLEXITY_API_KEY` | optional | Alternative `--search-backend perplexity` search backend (sonar-pro) |
 | `WANDB_API_KEY` | ✅ | W&B Weave tracing |
 | `GITHUB_TOKEN` | optional | Raises GitHub API rate limit |
@@ -196,9 +196,9 @@ Flags:
 | Flag | Default | Purpose |
 |------|---------|---------|
 | `--day` | (required) | ISO day id (e.g. `2026-05-19`) |
-| `--max-tools` | 12 | Maximum candidates ProfilerAgent will process |
+| `--max-tools` | 20 | Maximum candidates ProfilerAgent will process |
 | `--max-cost-usd` | 20.0 | Hard cost ceiling — graceful shutdown on overage |
-| `--search-backend` | `serpapi` | Search backend: `serpapi` or `perplexity` |
+| `--search-backend` | `serper` | Search backend: `serper` or `perplexity` |
 | `--dry-run` | false | Validate the pipeline with no LLM calls |
 | `--rerun` | false | Allow re-running an existing day (auto-backs up the previous folder) |
 

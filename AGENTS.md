@@ -3,6 +3,17 @@
 This file is the **build guide** Claude Code reads on every iteration.
 It is the guide for the *coder building the agents*, not the runtime guide for the research agent.
 
+For feedback-driven work, also read `skills/autoresearch-feedback-improvement/SKILL.md`. It is the shared workflow for turning Weave annotations and local annotation seeds into prompt or code improvements.
+
+---
+
+## Primary References
+
+- `AGENTS.md` — the canonical build guide and source of truth for coding agents.
+- `README.md` — agent architecture diagram, daily accumulation model, CLI usage.
+- `PRD.md` — User Stories with checkboxes, scope definition, and validation criteria.
+- `skills/autoresearch-feedback-improvement/SKILL.md` — workflow for using Weave annotations and local feedback seeds to guide prompt or code improvements.
+
 ---
 
 ## Stack
@@ -12,14 +23,45 @@ It is the guide for the *coder building the agents*, not the runtime guide for t
 - Framework: `openai-agents` (OpenAI Agents SDK)
 - **Observability: `weave` (W&B Weave) — auto-integrated via the OpenAI Agents SDK trace processor**
 - Models: `gpt-5.4-mini` for all three agents (Discovery, Profiler, Writer)
-- Search: SerpAPI by default; Perplexity `sonar-pro` is retained as `--search-backend perplexity`
+- Search: Serper by default; Perplexity `sonar-pro` is retained as `--search-backend perplexity`
 - Tests: `pytest`, `pytest-asyncio`
 - Env loading: `python-dotenv` from `.env`
   - `OPENAI_API_KEY` (required)
-  - `SERPAPI_API_KEY` (required for default Discovery and Profiler search)
+  - `SERPER_API_KEY` (required for default Discovery and Profiler search)
   - `PERPLEXITY_API_KEY` (required only for `--search-backend perplexity`)
   - `WANDB_API_KEY` (required for Weave tracing)
   - `GITHUB_TOKEN` (optional, raises GitHub API rate limit)
+
+---
+
+## Commands
+
+Always use `uv` — `pip` is forbidden.
+
+```bash
+# Install / sync dependencies
+uv sync
+
+# Run the full unit test suite (LLM mocked, free)
+uv run pytest tests/ --ignore=tests/e2e
+
+# Run only the e2e smoke test (dry-run, no real LLM calls)
+uv run pytest -m expensive tests/e2e/
+
+# Run a single test file or test
+uv run pytest tests/unit/test_us4_profiler.py -v
+uv run pytest tests/unit/test_us4_profiler.py::test_profiler_scope_filter_deep_research_tool_is_rejected -v
+
+# Add a new dependency
+uv add <package>
+
+# Run the CLI
+uv run autoresearch-researcher run --day 2026-05-19 [--max-tools N --max-cost-usd N --dry-run --rerun]
+uv run autoresearch-researcher diff --day 2026-05-19
+
+# One-time migration: import existing per-day tool profiles into the global registry
+uv run python scripts/migrate_to_registry.py daily_runs/<week_dir> <day_id>
+```
 
 ---
 
@@ -201,7 +243,7 @@ def verify_citations(report: str, sources: list[Source]) -> list[str]:
 ## Search backend constraints
 
 - DiscoveryAgent and ProfilerAgent both use the `search_web` function_tool, which wraps the configured backend from `tools/search.py`.
-- Default backend is **SerpAPI** (`SERPAPI_API_KEY`). This intentionally exposes rawer search-result quality for feedback-loop demos.
+- Default backend is **Serper** (`SERPER_API_KEY`). This intentionally exposes rawer search-result quality for feedback-loop demos.
 - Perplexity `sonar-pro` remains available via `--search-backend perplexity` (`PERPLEXITY_API_KEY`) for A/B comparisons.
 - Do not add automatic fallback between backends. If a selected backend is missing credentials or fails, return an explicit error string.
 - The OpenAI built-in `WebSearchTool` is **not** used. If you need to add it back for any reason, remember it requires Responses-API models (gpt-4o family, gpt-5 family).

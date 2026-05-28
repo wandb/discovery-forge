@@ -206,11 +206,14 @@ def test_profile_review_output_for_rejected_profile():
     output = profile_review_output({
         "slug": "tool-a",
         "name": "Tool A",
+        "url": "https://example.com/tool-a",
         "rejection_reason": "Curated list only.",
     }, status="rejected")
 
     assert output["verdict"] == "rejected"
+    assert output["primary_url"] == "https://example.com/tool-a"
     assert output["rejection_reason"] == "Curated list only."
+    assert "Primary URL: https://example.com/tool-a" in output["profile_review_markdown"]
     assert "Curated list only." in output["profile_review_markdown"]
 
 
@@ -315,7 +318,7 @@ async def test_dry_run_writes_profile_runs_and_prompt_hashes(tmp_path):
     assert metadata["profiled_count"] == 3
     assert metadata["accepted_count"] == 3
     assert metadata["rejected_count"] == 0
-    assert metadata["search_backend"] == "serpapi"
+    assert metadata["search_backend"] == "serper"
     assert metadata["prompt_refs"] == {"discovery": None, "profiler": None, "writer": None}
     assert set(metadata["prompt_hashes"]) == {"discovery", "profiler", "writer"}
 
@@ -324,7 +327,7 @@ async def test_dry_run_writes_profile_runs_and_prompt_hashes(tmp_path):
     assert {row["status"] for row in rows} == {"accepted"}
     assert all(row["run_id"] == metadata["run_id"] for row in rows)
     assert all(row["workflow_name"].startswith("stage2_profile_") for row in rows)
-    assert all(row["search_backend"] == "serpapi" for row in rows)
+    assert all(row["search_backend"] == "serper" for row in rows)
     assert (tmp_path / "manifest.json").exists()
     assert (tmp_path / "report.md").exists()
     assert (tmp_path / "items").exists()

@@ -90,7 +90,15 @@ def test_run_metadata_records_default_search_backend(tmp_path):
         runner.invoke(app, ["run", "--day", "2026-05-28", "--output-dir", str(tmp_path)])
         metadata_path = tmp_path / "2026-05-28" / "run_metadata.json"
         data = json.loads(metadata_path.read_text())
-        assert data["search_backend"] == "serpapi"
+        assert data["search_backend"] == "serper"
+
+
+def test_run_defaults_to_20_max_tools(tmp_path):
+    with patch("autoresearch_researcher.cli.run_briefing", new_callable=AsyncMock) as mock_run:
+        mock_run.return_value = None
+        runner.invoke(app, ["run", "--day", "2026-05-28", "--output-dir", str(tmp_path)])
+        call_kwargs = mock_run.call_args.kwargs
+        assert call_kwargs["max_tools"] == 20
 
 
 def test_run_dry_run_flag(tmp_path):

@@ -44,7 +44,7 @@ async def test_e2e_smoke_dry_run(tmp_path):
     assert (tmp_path / "_candidates.jsonl").exists(), "_candidates.jsonl must exist"
     assert (tmp_path / "_profile_runs.jsonl").exists(), "_profile_runs.jsonl must exist"
     metadata = json.loads((tmp_path / "run_metadata.json").read_text())
-    assert metadata["search_backend"] == "serpapi"
+    assert metadata["search_backend"] == "serper"
 
     # ── 2. tools/ has ≥3 in-scope profiles ────────────────────────────────────
     tools_dir = tmp_path / "tools"
@@ -97,7 +97,7 @@ async def test_e2e_smoke_dry_run(tmp_path):
         assert run["status"] == "accepted"
         assert "weave_call_id" in run
         assert "profiler_prompt_hash" in run
-        assert run["search_backend"] == "serpapi"
+        assert run["search_backend"] == "serper"
 
 
 @pytest.mark.expensive

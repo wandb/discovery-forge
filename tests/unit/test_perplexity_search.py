@@ -12,25 +12,25 @@ ROOT = Path(__file__).parent.parent.parent
 # ── PerplexitySearchTool unit tests (mocked HTTP) ─────────────────────────────
 
 
-def test_default_search_backend_is_serpapi():
+def test_default_search_backend_is_serper():
     from autoresearch_researcher.tools.search import DEFAULT_SEARCH_BACKEND
 
-    assert DEFAULT_SEARCH_BACKEND == "serpapi"
+    assert DEFAULT_SEARCH_BACKEND == "serper"
 
 
-def test_serpapi_search_returns_normalized_results(monkeypatch):
-    from autoresearch_researcher.tools.search import serpapi_search
+def test_serper_search_returns_normalized_results(monkeypatch):
+    from autoresearch_researcher.tools.search import serper_search
 
-    monkeypatch.setenv("SERPAPI_API_KEY", "test-key")
+    monkeypatch.setenv("SERPER_API_KEY", "test-key")
     mock_response = {
-        "organic_results": [{
+        "organic": [{
             "title": "ToolX",
             "link": "https://github.com/x/toolx",
             "snippet": "ToolX runs ML experiments.",
             "date": "May 2026",
             "source": "GitHub",
         }],
-        "related_questions": [{
+        "peopleAlsoAsk": [{
             "question": "What is ToolX?",
             "snippet": "An experiment agent.",
             "link": "https://example.com/toolx",
@@ -38,50 +38,52 @@ def test_serpapi_search_returns_normalized_results(monkeypatch):
     }
     with patch("autoresearch_researcher.tools.search.httpx.Client") as MockClient:
         mock_client = MockClient.return_value.__enter__.return_value
-        mock_client.get.return_value.json.return_value = mock_response
-        mock_client.get.return_value.raise_for_status = MagicMock()
+        mock_client.post.return_value.json.return_value = mock_response
+        mock_client.post.return_value.raise_for_status = MagicMock()
 
-        result = serpapi_search("ToolX autonomous experiment agent")
+        result = serper_search("ToolX autonomous experiment agent")
 
-    assert "Search backend: serpapi" in result
+    assert "Search backend: serper" in result
     assert "ToolX" in result
     assert "https://github.com/x/toolx" in result
     assert "May 2026" in result
 
 
-def test_serpapi_search_uses_serpapi_endpoint(monkeypatch):
-    from autoresearch_researcher.tools.search import serpapi_search
+def test_serper_search_uses_serper_endpoint(monkeypatch):
+    from autoresearch_researcher.tools.search import serper_search
 
-    monkeypatch.setenv("SERPAPI_API_KEY", "test-key")
+    monkeypatch.setenv("SERPER_API_KEY", "test-key")
     with patch("autoresearch_researcher.tools.search.httpx.Client") as MockClient:
         mock_client = MockClient.return_value.__enter__.return_value
-        mock_client.get.return_value.json.return_value = {"organic_results": []}
-        mock_client.get.return_value.raise_for_status = MagicMock()
+        mock_client.post.return_value.json.return_value = {"organic": []}
+        mock_client.post.return_value.raise_for_status = MagicMock()
 
-        serpapi_search("test query")
+        serper_search("test query")
 
-        call_args = mock_client.get.call_args
+        call_args = mock_client.post.call_args
         url = call_args.args[0] if call_args.args else call_args.kwargs.get("url", "")
-        params = call_args.kwargs.get("params", {})
-        assert "serpapi.com" in url
-        assert params["q"] == "test query"
-        assert params["engine"] == "google"
+        body = call_args.kwargs.get("json", {})
+        headers = call_args.kwargs.get("headers", {})
+        assert "google.serper.dev" in url
+        assert body["q"] == "test query"
+        assert body["num"] == 10
+        assert headers["X-API-KEY"] == "test-key"
 
 
-def test_serpapi_search_without_api_key_returns_error(monkeypatch):
-    from autoresearch_researcher.tools.search import serpapi_search
+def test_serper_search_without_api_key_returns_error(monkeypatch):
+    from autoresearch_researcher.tools.search import serper_search
 
-    monkeypatch.delenv("SERPAPI_API_KEY", raising=False)
+    monkeypatch.delenv("SERPER_API_KEY", raising=False)
 
-    result = serpapi_search("test query")
-    assert "SERPAPI_API_KEY" in result
+    result = serper_search("test query")
+    assert "SERPER_API_KEY" in result
 
 
-def test_search_web_query_routes_to_serpapi(monkeypatch):
+def test_search_web_query_routes_to_serper(monkeypatch):
     from autoresearch_researcher.tools import search
 
-    monkeypatch.setattr(search, "serpapi_search", lambda query: f"serp:{query}")
-    assert search.search_web_query("abc", backend="serpapi") == "serp:abc"
+    monkeypatch.setattr(search, "serper_search", lambda query: f"serper:{query}")
+    assert search.search_web_query("abc", backend="serper") == "serper:abc"
 
 
 def test_search_web_query_routes_to_perplexity(monkeypatch):
@@ -206,5 +208,5 @@ def test_discovery_agent_has_search_tool():
 
 def test_env_example_has_search_backend_keys():
     env_example = (ROOT / ".env.example").read_text()
-    assert "SERPAPI_API_KEY" in env_example
+    assert "SERPER_API_KEY" in env_example
     assert "PERPLEXITY_API_KEY" in env_example

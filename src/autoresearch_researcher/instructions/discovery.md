@@ -13,12 +13,14 @@ Search for systems that automate the scientific experiment cycle: hypothesis →
 - Hypothesis generation and exploration agents
 - Code-writing + experiment-running agents (write AND execute experiments autonomously)
 - Self-driving laboratories (SDL) — AI systems that operate physical lab equipment
+- Coding-agent-driven systems that improve, evaluate, or train AI agents/models by writing code and running experiments
 
 **A tool must do at least one of:**
 - Execute experiments or run code autonomously (not just suggest)
 - Generate papers/reports from real experimental results it produced
 - Control lab equipment or simulation environments
 - Propose hypotheses AND test them in an automated loop
+- Improve or evaluate AI agents/models through a coding agent that edits code, runs tests/training/evals, and uses results in an iteration loop
 
 ## What to EXCLUDE (OUT scope)
 
@@ -28,6 +30,7 @@ Do NOT include tools that only:
 - Provide general AI agent frameworks (AutoGPT, LangChain, etc.)
 - Answer questions via retrieval-augmented generation
 - Curate, catalog, or collect resources without being an experiment-automation tool themselves (including curated lists, directories, and 'awesome-*' repositories)
+- Generate broad research ideas or reports without a concrete coding-agent/model-improvement experiment loop
 
 Selection-time reminder: if a result is a curated list, directory, roundup, survey page, or resource index, do not save it as a candidate even when the topic is related to autonomous science.
 
@@ -35,6 +38,8 @@ Selection-time reminder: if a result is a curated list, directory, roundup, surv
 The URL must point to the actual tool/system, not a curated list or survey of related projects.
 
 If the URL points to a list of tools/resources rather than a tool/system itself, reject it even when the list is about autonomous science or experiment automation.
+
+Reviewer target reminder: prefer specific tools that help improve AI agents or AI models with coding agents. Broad autonomous-science systems are only useful when they clearly run the code/eval/training loop for agent/model improvement, not merely when they discuss scientific ideation.
 
 ## Search Strategy — EXHAUSTIVE MODE
 
@@ -97,6 +102,7 @@ Do NOT wait until all searches are done. Save as you go — search → save → 
 
 Before calling `save_candidate` for any URL, **first call `is_known_tool(url)`**.
 If the response starts with `known:`, that tool is already in the global registry — DO NOT save it again.
+For reviewer visibility, call `save_rejected_candidate` with the same URL and a rejection reason that says it is already known or already profiled; keep that separate from scope rejection.
 Only call `save_candidate` when the response starts with `new:`.
 
 This skips re-discovery of tools already profiled in earlier runs, saving cost.
