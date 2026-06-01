@@ -49,14 +49,16 @@ def build_feed_output(
 
     new_ids = _ids_from_jsonl(day_dir / "_new_candidates.jsonl")
     updated_ids = _ids_from_jsonl(day_dir / "_updated_tools.jsonl")
+    weave_trace_ids = _weave_trace_ids_by_slug(day_dir / "_profile_runs.jsonl")
 
     manifest_items = []
     deduped_profiles = _dedupe_profiles_by_key(profiles, new_ids, updated_ids)
     for profile in _sort_profiles(deduped_profiles):
+        item_id = _profile_item_id(profile)
         item = _profile_to_item(
             profile,
             generated_at=generated_at,
-            source_sha=resolved_source_sha,
+            weave_trace_id=weave_trace_ids.get(item_id),
         )
         item_path = items_dir / f"{item['id']}.json"
         _write_json(item_path, item)
@@ -67,6 +69,7 @@ def build_feed_output(
             "contentHash": item["contentHash"],
             "changeStatus": _change_status(item["id"], new_ids, updated_ids),
         })
+    _remove_stale_item_files(items_dir, manifest_items)
 
     _write_report(day_dir)
     _write_raw_artifacts(day_dir)
@@ -125,13 +128,27 @@ def dedupe_key_for_url(url: str | None, *, fallback_id: str) -> str:
     return f"source:autoresearch:{fallback_id}"
 
 
+def feed_metadata_for_profile(profile: dict[str, Any]) -> dict[str, Any]:
+    """Return the per-profile feed fields useful for linking Weave traces to feed items."""
+    item_id = str(profile.get("slug") or _slugify(str(profile.get("name") or "unknown")))
+    canonical_url = _canonical_url(profile)
+    return {
+        "feed_item_id": item_id,
+        "feed_item_path": f"items/{item_id}.json",
+        "feed_dedupe_key": dedupe_key_for_url(canonical_url, fallback_id=item_id),
+        "feed_canonical_url": canonical_url,
+        "feed_tags": _tags(profile),
+        "feed_manifest_path": "manifest.json",
+    }
+
+
 def _profile_to_item(
     profile: dict[str, Any],
     *,
     generated_at: str,
-    source_sha: str | None,
+    weave_trace_id: str | None,
 ) -> dict[str, Any]:
-    item_id = str(profile.get("slug") or _slugify(str(profile.get("name") or "unknown")))
+    item_id = _profile_item_id(profile)
     canonical_url = _canonical_url(profile)
     domains = profile.get("domains") if isinstance(profile.get("domains"), list) else []
     limitations = profile.get("key_limitations") if isinstance(profile.get("key_limitations"), list) else []
@@ -151,7 +168,7 @@ def _profile_to_item(
         "tags": _tags(profile),
         "pagePublishedAt": generated_at,
         "sourceUpdatedAt": profile.get("last_commit") or generated_at,
-        "weaveTraceId": profile.get("weave_call_id") or source_sha,
+        "weaveTraceId": profile.get("weave_call_id") or weave_trace_id,
         "metadata": {
             "githubStars": profile.get("stars"),
             "license": profile.get("license") or "unknown",
@@ -185,6 +202,13 @@ def _write_json(path: Path, value: dict[str, Any]) -> None:
     path.write_text(json.dumps(value, ensure_ascii=False, sort_keys=True, indent=2) + "\n")
 
 
+def _remove_stale_item_files(items_dir: Path, manifest_items: list[dict[str, Any]]) -> None:
+    expected_paths = {items_dir / f"{item['id']}.json" for item in manifest_items}
+    for path in items_dir.glob("*.json"):
+        if path not in expected_paths:
+            path.unlink()
+
+
 def _read_json(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {}
@@ -203,6 +227,26 @@ def _ids_from_jsonl(path: Path) -> set[str]:
         if item_id:
             ids.add(str(item_id))
     return ids
+
+
+def _weave_trace_ids_by_slug(path: Path) -> dict[str, str]:
+    """Return per-profile Weave call IDs captured during this daily run."""
+    trace_ids: dict[str, str] = {}
+    if not path.exists():
+        return trace_ids
+    for line in path.read_text().splitlines():
+        if not line.strip():
+            continue
+        row = json.loads(line)
+        slug = row.get("slug")
+        weave_call_id = row.get("weave_call_id")
+        if slug and weave_call_id:
+            trace_ids[str(slug)] = str(weave_call_id)
+    return trace_ids
+
+
+def _profile_item_id(profile: dict[str, Any]) -> str:
+    return str(profile.get("slug") or _slugify(str(profile.get("name") or "unknown")))
 
 
 def _change_status(item_id: str, new_ids: set[str], updated_ids: set[str]) -> str:

@@ -48,7 +48,11 @@ def _bootstrap_day_dir(day_dir: Path) -> None:
         json.dumps({"slug": "tool-a", "name": "Tool A"}) + "\n"
     )
     (day_dir / "_profile_runs.jsonl").write_text(
-        json.dumps({"day": "2026-05-28", "slug": "tool-a"}) + "\n"
+        json.dumps({
+            "day": "2026-05-28",
+            "slug": "tool-a",
+            "weave_call_id": "call-tool-a",
+        }) + "\n"
     )
     _write_profile(day_dir / "tools")
 
@@ -83,6 +87,7 @@ def test_build_feed_output_writes_manifest_items_report_and_raw(tmp_path):
     assert item_file["tags"] == ["academic", "github"]
     assert item_file["metadata"]["githubStars"] == 123
     assert item_file["metadata"]["keyLimitation"] == "Needs GPU"
+    assert item_file["weaveTraceId"] == "call-tool-a"
     assert item_file["contentHash"]
 
     assert (day_dir / "report.md").read_text() == "# Daily Briefing\n\nBody"
@@ -90,6 +95,25 @@ def test_build_feed_output_writes_manifest_items_report_and_raw(tmp_path):
     assert (day_dir / "raw" / "new_candidates.jsonl").exists()
     assert (day_dir / "raw" / "comparison_table.md").exists()
     assert (day_dir / "raw" / "run_metadata.json").exists()
+
+
+def test_feed_metadata_for_profile_matches_manifest_item_projection():
+    from autoresearch_researcher.tools.feed import feed_metadata_for_profile
+
+    metadata = feed_metadata_for_profile({
+        "slug": "tool-a",
+        "name": "Tool A",
+        "github_url": "https://github.com/example/tool-a",
+        "paper_url": "https://arxiv.org/abs/2601.00001",
+        "domains": ["ml"],
+    })
+
+    assert metadata["feed_item_id"] == "tool-a"
+    assert metadata["feed_item_path"] == "items/tool-a.json"
+    assert metadata["feed_dedupe_key"].startswith("url:")
+    assert metadata["feed_canonical_url"] == "https://github.com/example/tool-a"
+    assert metadata["feed_tags"] == ["academic", "github"]
+    assert metadata["feed_manifest_path"] == "manifest.json"
 
 
 def test_build_feed_output_hashes_are_stable(tmp_path):
@@ -127,3 +151,35 @@ def test_build_feed_output_dedupes_items_by_dedupe_key(tmp_path):
     assert manifest["items"][0]["id"] == "tool-a"
     assert manifest["delta"]["newItemIds"] == []
     assert manifest["delta"]["updatedItemIds"] == ["tool-a"]
+
+
+def test_build_feed_output_does_not_use_source_sha_as_weave_trace_fallback(tmp_path):
+    from autoresearch_researcher.tools.feed import build_feed_output
+
+    day_dir = tmp_path / "2026-05-28"
+    day_dir.mkdir()
+    _bootstrap_day_dir(day_dir)
+    (day_dir / "_profile_runs.jsonl").write_text(
+        json.dumps({"day": "2026-05-28", "slug": "other-tool", "weave_call_id": "call-other"})
+        + "\n"
+    )
+
+    build_feed_output(day_dir, registry=None, day="2026-05-28", source_sha="abc123")
+
+    item_file = json.loads((day_dir / "items" / "tool-a.json").read_text())
+    assert item_file["weaveTraceId"] is None
+
+
+def test_build_feed_output_removes_stale_item_files(tmp_path):
+    from autoresearch_researcher.tools.feed import build_feed_output
+
+    day_dir = tmp_path / "2026-05-28"
+    day_dir.mkdir()
+    _bootstrap_day_dir(day_dir)
+    stale_item = day_dir / "items" / "stale-tool.json"
+    stale_item.parent.mkdir()
+    stale_item.write_text(json.dumps({"id": "stale-tool"}) + "\n")
+
+    build_feed_output(day_dir, registry=None, day="2026-05-28", source_sha="abc123")
+
+    assert not stale_item.exists()
