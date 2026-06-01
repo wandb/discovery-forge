@@ -139,8 +139,8 @@ def test_read_profiler_output_prefers_rejected_profile(tmp_path):
     assert output["rejection_reason"] == "Rejected as out of scope."
 
 
-def test_profiler_eval_model_predict_returns_saved_profile(tmp_path):
-    from autoresearch_researcher.tools.evaluation import ProfilerEvalModel
+def test_profiler_eval_predict_fn_returns_saved_profile(tmp_path):
+    from autoresearch_researcher.tools.evaluation import make_profiler_eval_predict_fn
 
     async def fake_run(agent, input, max_turns):
         tools_dir = tmp_path / "tool-a" / "tools"
@@ -162,12 +162,12 @@ def test_profiler_eval_model_predict_returns_saved_profile(tmp_path):
         )
         return type("Result", (), {"final_output": "done"})()
 
-    model = ProfilerEvalModel(output_dir=str(tmp_path))
+    predict = make_profiler_eval_predict_fn(output_dir=tmp_path)
     with patch("autoresearch_researcher.tools.evaluation.Runner.run", new=AsyncMock(side_effect=fake_run)):
         import asyncio
 
         output = asyncio.run(
-            model.predict(
+            predict(
                 input_tool_name="Tool A",
                 input_candidate_url="https://github.com/example/tool-a",
                 input_candidate_description="Runs experiments.",
@@ -214,6 +214,7 @@ def test_run_profiler_evaluation_uses_local_rows_without_publishing_dataset(tmp_
     assert result == {"ok": True}
     assert isinstance(captured["dataset"], list)
     assert captured["dataset"][0]["input_tool_name"] == "Tool A"
+    assert callable(captured["model"])
 
 
 def test_run_profiler_evaluation_reuses_dataset_ref_object(tmp_path):

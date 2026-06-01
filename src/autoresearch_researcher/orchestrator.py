@@ -423,6 +423,8 @@ def render_discovery_review_markdown(
 
 def profile_review_output(profile: dict[str, Any], *, status: str) -> dict[str, Any]:
     """Return Annotation Queue-friendly Profiler output fields."""
+    from autoresearch_researcher.tools.feed import feed_metadata_for_profile
+
     slug = profile.get("slug") or "unknown"
     primary_url = (
         profile.get("github_url")
@@ -448,6 +450,17 @@ def profile_review_output(profile: dict[str, Any], *, status: str) -> dict[str, 
         "profile_path": f"daily_runs/_registry/profiles/{slug}.md" if status == "accepted" else None,
         "prompt_ref": profile.get("profiler_prompt_ref"),
     }
+    if status == "accepted":
+        output.update(feed_metadata_for_profile(profile))
+    else:
+        output.update({
+            "feed_item_id": None,
+            "feed_item_path": None,
+            "feed_dedupe_key": None,
+            "feed_canonical_url": None,
+            "feed_tags": [],
+            "feed_manifest_path": None,
+        })
     return output
 
 

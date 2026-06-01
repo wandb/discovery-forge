@@ -16,21 +16,21 @@ from autoresearch_researcher.agents.profiler import build_profiler_agent
 from autoresearch_researcher.tools.search import DEFAULT_SEARCH_BACKEND, SearchBackend
 
 
-class ProfilerEvalModel(weave.Model):
-    """Run ProfilerAgent once for each profiler evaluation row."""
+def make_profiler_eval_predict_fn(
+    *,
+    output_dir: Path,
+    search_backend: SearchBackend = DEFAULT_SEARCH_BACKEND,
+):
+    """Create the profiler evaluation predict op without publishing a Weave Model."""
 
-    output_dir: str
-    search_backend: str = DEFAULT_SEARCH_BACKEND
-
-    @weave.op()
+    @weave.op(name="profiler_eval_predict")
     async def predict(
-        self,
         input_tool_name: str,
         input_candidate_url: str,
         input_candidate_description: str,
         **_: Any,
     ) -> dict[str, Any]:
-        row_dir = Path(self.output_dir) / _safe_name(input_tool_name)
+        row_dir = output_dir / _safe_name(input_tool_name)
         row_dir.mkdir(parents=True, exist_ok=True)
         prompt = (
             "Profile this tool candidate and determine if it is in scope:\n"
@@ -40,13 +40,15 @@ class ProfilerEvalModel(weave.Model):
         )
         agent = build_profiler_agent(
             output_dir=row_dir,
-            search_backend=self.search_backend,
+            search_backend=search_backend,
         )
         result = await Runner.run(agent, input=prompt, max_turns=15)
         return {
             **_read_profiler_output(row_dir),
             "final_output": str(getattr(result, "final_output", "")),
         }
+
+    return predict
 
 
 @weave.op()
@@ -135,13 +137,13 @@ def run_profiler_evaluation(
         rows = _dataset_rows(dataset)[:limit]
         dataset = rows
     output_dir.mkdir(parents=True, exist_ok=True)
-    model = ProfilerEvalModel(output_dir=str(output_dir), search_backend=search_backend)
+    predict = make_profiler_eval_predict_fn(output_dir=output_dir, search_backend=search_backend)
     evaluation = weave.Evaluation(
         dataset=dataset,
         scorers=[scope_decision_scorer, profile_quality_scorer],
         evaluation_name=evaluation_name,
     )
-    return asyncio.run(evaluation.evaluate(model))
+    return asyncio.run(evaluation.evaluate(predict))
 
 
 def _load_evaluation_dataset(

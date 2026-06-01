@@ -196,6 +196,12 @@ def test_profile_review_output_for_accepted_profile():
     assert output["tool_name"] == "Tool A"
     assert output["primary_url"] == "https://github.com/example/tool-a"
     assert output["profile_path"] == "daily_runs/_registry/profiles/tool-a.md"
+    assert output["feed_item_id"] == "tool-a"
+    assert output["feed_item_path"] == "items/tool-a.json"
+    assert output["feed_canonical_url"] == "https://github.com/example/tool-a"
+    assert output["feed_dedupe_key"].startswith("url:")
+    assert output["feed_tags"] == ["github"]
+    assert output["feed_manifest_path"] == "manifest.json"
     assert "Tool Profile Review: Tool A" in output["profile_review_markdown"]
     assert "Needs GPU" in output["profile_review_markdown"]
 
@@ -213,6 +219,8 @@ def test_profile_review_output_for_rejected_profile():
     assert output["verdict"] == "rejected"
     assert output["primary_url"] == "https://example.com/tool-a"
     assert output["rejection_reason"] == "Curated list only."
+    assert output["feed_item_id"] is None
+    assert output["feed_item_path"] is None
     assert "Primary URL: https://example.com/tool-a" in output["profile_review_markdown"]
     assert "Curated list only." in output["profile_review_markdown"]
 
