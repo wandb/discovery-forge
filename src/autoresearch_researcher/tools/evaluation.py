@@ -13,15 +13,28 @@ import yaml
 from agents import Runner
 
 from autoresearch_researcher.agents.researcher import build_researcher_agent
+from autoresearch_researcher.tools.prompts import load_prompt_ref_content
 from autoresearch_researcher.tools.search import DEFAULT_SEARCH_BACKEND, SearchBackend
+
+
+class VerdictQualityEvaluation(weave.Evaluation):
+    """Named Weave Evaluation object for verdict quality runs."""
+
+    researcher_prompt_ref: str | None = None
 
 
 def make_researcher_eval_predict_fn(
     *,
     output_dir: Path,
     search_backend: SearchBackend = DEFAULT_SEARCH_BACKEND,
+    researcher_prompt_ref: str | None = None,
 ):
     """Create the researcher evaluation predict op without publishing a Weave Model."""
+    instructions_override = (
+        load_prompt_ref_content(researcher_prompt_ref)
+        if researcher_prompt_ref is not None
+        else None
+    )
 
     @weave.op(name="researcher_eval_predict")
     async def predict(
@@ -43,10 +56,12 @@ def make_researcher_eval_predict_fn(
         agent = build_researcher_agent(
             output_dir=row_dir,
             search_backend=search_backend,
+            instructions_override=instructions_override,
         )
         result = await Runner.run(agent, input=prompt, max_turns=15)
         return {
             **_read_researcher_output(row_dir),
+            "researcher_prompt_ref": researcher_prompt_ref,
             "final_output": str(getattr(result, "final_output", "")),
         }
 
@@ -54,17 +69,16 @@ def make_researcher_eval_predict_fn(
 
 
 @weave.op()
-def scope_decision_scorer(
+def verdict_quality_scorer(
     output: dict[str, Any],
     expected_scope_status: str,
 ) -> dict[str, Any]:
-    """Score whether Profiler accepted/rejected the candidate correctly."""
+    """Score whether the agent accepted/rejected the candidate correctly."""
     observed = output.get("scope_status")
     return {
-        "passed": observed == expected_scope_status,
+        "is_correct": observed == expected_scope_status,
         "expected": expected_scope_status,
         "observed": observed,
-        "reason": None if observed == expected_scope_status else output.get("verdict_reason"),
     }
 
 
@@ -130,20 +144,26 @@ def run_researcher_evaluation(
     dataset_ref: str | None = None,
     output_dir: Path,
     search_backend: SearchBackend = DEFAULT_SEARCH_BACKEND,
-    evaluation_name: str = "Researcher Eval",
+    evaluation_name: str = "Verdict Quality Eval",
     limit: int | None = None,
+    researcher_prompt_ref: str | None = None,
 ) -> Any:
     """Run the ResearcherAgent Weave evaluation."""
     dataset = _load_evaluation_dataset(dataset_path=dataset_path, dataset_ref=dataset_ref)
+    rows = _dataset_rows(dataset)
     if limit is not None:
-        rows = _dataset_rows(dataset)[:limit]
-        dataset = rows
+        rows = rows[:limit]
     output_dir.mkdir(parents=True, exist_ok=True)
-    predict = make_researcher_eval_predict_fn(output_dir=output_dir, search_backend=search_backend)
-    evaluation = weave.Evaluation(
-        dataset=dataset,
-        scorers=[scope_decision_scorer, profile_quality_scorer],
+    predict = make_researcher_eval_predict_fn(
+        output_dir=output_dir,
+        search_backend=search_backend,
+        researcher_prompt_ref=researcher_prompt_ref,
+    )
+    evaluation = VerdictQualityEvaluation(
+        dataset=rows,
+        scorers=[verdict_quality_scorer],
         evaluation_name=evaluation_name,
+        researcher_prompt_ref=researcher_prompt_ref,
     )
     return asyncio.run(evaluation.evaluate(predict))
 

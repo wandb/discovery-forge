@@ -79,11 +79,7 @@ Implementation constraints:
 
 Primary scorer:
 
-- `scope_decision_scorer`: checks whether the agent returned `accepted` or `rejected` as expected.
-
-Secondary scorer:
-
-- `profile_quality_scorer`: checks accepted profile completeness and rejected-profile reason quality.
+- `verdict_quality_scorer`: checks whether the agent returned `accepted` or `rejected` as expected.
 
 When summarizing results, report:
 
@@ -91,16 +87,13 @@ When summarizing results, report:
 - evaluation call id
 - dataset ref/version
 - total rows evaluated
-- `scope_decision_scorer.passed` count/fraction
-- `profile_quality_scorer.passed` count/fraction
-- examples that failed scope decision
-- examples that passed scope but failed quality
+- `verdict_quality_scorer.is_correct` count/fraction
+- examples that failed verdict quality
 
 Failure interpretation rules:
 
 - If `expected_scope_status == rejected` and the agent accepts, this is usually a scope-policy issue.
 - If `expected_scope_status == accepted` and the agent rejects due to missing metadata, keep scope verdict separate from metadata completeness.
-- If scope is correct but profile quality fails, improve the agent's metadata extraction/source behavior rather than changing scorer requirements.
 - If the dataset row looks wrong, report it as a dataset review item. Do not change dataset/audit evidence in this workflow.
 
 ### Failure Investigation Checklist

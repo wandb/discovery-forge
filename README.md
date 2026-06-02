@@ -212,7 +212,7 @@ Runs the `PromptImprovementApplierAgent`. It reads `prompt_improvement_plan.md` 
 uv run autoresearch-researcher eval run-researcher --dataset-path <dataset.jsonl> --output-dir eval_runs/researcher-<date>
 ```
 
-Runs a Weave Evaluation of the ResearcherAgent's scope/profile decision against a fixed dataset (`scope_decision_scorer`, `profile_quality_scorer`).
+Runs a Weave Evaluation of the ResearcherAgent's accept/reject decision against a fixed dataset (`verdict_quality_scorer.is_correct`).
 
 ### Prompt versioning
 

@@ -96,6 +96,15 @@ def prompt_contents(versions: dict[str, InstructionPromptVersion]) -> dict[str, 
     return {agent: version.formatted_content for agent, version in versions.items()}
 
 
+def load_prompt_ref_content(prompt_ref: str) -> str:
+    """Load StringPrompt content from a versioned Weave prompt ref."""
+    prompt = weave.ref(prompt_ref).get()
+    content = getattr(prompt, "content", None)
+    if not isinstance(content, str):
+        raise ValueError(f"Weave prompt ref does not contain string content: {prompt_ref}")
+    return content
+
+
 def format_instruction_content(agent_name: str, content: str, *, max_tools: int) -> str:
     """Apply runtime variables after retrieving the registered prompt content.
 

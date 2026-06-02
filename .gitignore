@@ -11,4 +11,5 @@ wandb/
 dist/
 *.egg-info/
 .DS_Store
-eval/
+eval_runs/
+eval/eval_runs/
