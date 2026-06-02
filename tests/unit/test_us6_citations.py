@@ -151,7 +151,7 @@ def test_verify_citations_returns_list_of_strings():
     assert all(isinstance(e, str) for e in errors)
 
 
-# ── Integration: sources tracking in ProfilerAgent tool ──────────────────────
+# ── Integration: sources tracking (retained citation subsystem) ──────────────
 
 def test_source_registry_allocates_sequential_ids(tmp_path):
     from autoresearch_researcher.tools.citations import SourceRegistry

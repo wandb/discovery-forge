@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from autoresearch_researcher.agents.writer import load_tool_profiles_from_dir
+from autoresearch_researcher.tools.profiles import load_tool_profiles_from_dir
 
 RAW_ARTIFACTS = {
     "_candidates.jsonl": "candidates.jsonl",
@@ -19,9 +19,6 @@ RAW_ARTIFACTS = {
     "_updated_tools.jsonl": "updated_tools.jsonl",
     "_rejected_profiles.jsonl": "rejected_profiles.jsonl",
     "_profile_runs.jsonl": "profile_runs.jsonl",
-    "comparison_table.md": "comparison_table.md",
-    "draft.md": "draft.md",
-    "highlights.md": "highlights.md",
     "run_metadata.json": "run_metadata.json",
 }
 
@@ -71,7 +68,6 @@ def build_feed_output(
         })
     _remove_stale_item_files(items_dir, manifest_items)
 
-    _write_report(day_dir)
     _write_raw_artifacts(day_dir)
 
     manifest_new_ids = sorted(
@@ -181,12 +177,6 @@ def _profile_to_item(
     }
     item["contentHash"] = stable_hash(item)
     return item
-
-
-def _write_report(day_dir: Path) -> None:
-    draft = day_dir / "draft.md"
-    report = day_dir / "report.md"
-    report.write_text(draft.read_text() if draft.exists() else "")
 
 
 def _write_raw_artifacts(day_dir: Path) -> None:

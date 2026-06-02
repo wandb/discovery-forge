@@ -1,4 +1,4 @@
-"""Weave Evaluation runner for ProfilerAgent."""
+"""Weave Evaluation runner for the ResearcherAgent scope/profile decision."""
 
 from __future__ import annotations
 
@@ -12,18 +12,18 @@ import weave
 import yaml
 from agents import Runner
 
-from autoresearch_researcher.agents.profiler import build_profiler_agent
+from autoresearch_researcher.agents.researcher import build_researcher_agent
 from autoresearch_researcher.tools.search import DEFAULT_SEARCH_BACKEND, SearchBackend
 
 
-def make_profiler_eval_predict_fn(
+def make_researcher_eval_predict_fn(
     *,
     output_dir: Path,
     search_backend: SearchBackend = DEFAULT_SEARCH_BACKEND,
 ):
-    """Create the profiler evaluation predict op without publishing a Weave Model."""
+    """Create the researcher evaluation predict op without publishing a Weave Model."""
 
-    @weave.op(name="profiler_eval_predict")
+    @weave.op(name="researcher_eval_predict")
     async def predict(
         input_tool_name: str,
         input_candidate_url: str,
@@ -33,18 +33,20 @@ def make_profiler_eval_predict_fn(
         row_dir = output_dir / _safe_name(input_tool_name)
         row_dir.mkdir(parents=True, exist_ok=True)
         prompt = (
-            "Profile this tool candidate and determine if it is in scope:\n"
+            "Profile this specific tool candidate and determine if it is in scope:\n"
             f"Name: {input_tool_name}\n"
             f"URL: {input_candidate_url}\n"
-            f"Description: {input_candidate_description}"
+            f"Description: {input_candidate_description}\n"
+            "If in scope, save sources then call save_tool_profile_tool. "
+            "If out of scope, call save_rejected_profile_tool with a clear reason."
         )
-        agent = build_profiler_agent(
+        agent = build_researcher_agent(
             output_dir=row_dir,
             search_backend=search_backend,
         )
         result = await Runner.run(agent, input=prompt, max_turns=15)
         return {
-            **_read_profiler_output(row_dir),
+            **_read_researcher_output(row_dir),
             "final_output": str(getattr(result, "final_output", "")),
         }
 
@@ -122,22 +124,22 @@ def profile_quality_scorer(
     }
 
 
-def run_profiler_evaluation(
+def run_researcher_evaluation(
     *,
     dataset_path: Path | None = None,
     dataset_ref: str | None = None,
     output_dir: Path,
     search_backend: SearchBackend = DEFAULT_SEARCH_BACKEND,
-    evaluation_name: str = "Profiler Eval",
+    evaluation_name: str = "Researcher Eval",
     limit: int | None = None,
 ) -> Any:
-    """Run the ProfilerAgent Weave evaluation."""
+    """Run the ResearcherAgent Weave evaluation."""
     dataset = _load_evaluation_dataset(dataset_path=dataset_path, dataset_ref=dataset_ref)
     if limit is not None:
         rows = _dataset_rows(dataset)[:limit]
         dataset = rows
     output_dir.mkdir(parents=True, exist_ok=True)
-    predict = make_profiler_eval_predict_fn(output_dir=output_dir, search_backend=search_backend)
+    predict = make_researcher_eval_predict_fn(output_dir=output_dir, search_backend=search_backend)
     evaluation = weave.Evaluation(
         dataset=dataset,
         scorers=[scope_decision_scorer, profile_quality_scorer],
@@ -168,24 +170,7 @@ def _dataset_rows(dataset: Any) -> list[dict[str, Any]]:
     return [dict(row) for row in dataset.rows]
 
 
-def _load_dataset_rows(
-    *,
-    dataset_path: Path | None,
-    dataset_ref: str | None,
-) -> list[dict[str, Any]]:
-    if dataset_path is None and dataset_ref is None:
-        raise ValueError("Provide either dataset_path or dataset_ref")
-    if dataset_path is not None:
-        return [
-            json.loads(line)
-            for line in dataset_path.read_text().splitlines()
-            if line.strip()
-        ]
-    dataset = weave.ref(str(dataset_ref)).get()
-    return [dict(row) for row in dataset.rows]
-
-
-def _read_profiler_output(output_dir: Path) -> dict[str, Any]:
+def _read_researcher_output(output_dir: Path) -> dict[str, Any]:
     rejected = _read_latest_jsonl(output_dir / "_rejected_profiles.jsonl")
     if rejected is not None:
         return {

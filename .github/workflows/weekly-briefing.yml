@@ -15,6 +15,31 @@ on:
         required: false
         type: string
         default: '15'
+      max_tools:
+        description: 'Maximum ResearcherAgent runs / feed items to attempt'
+        required: false
+        type: string
+        default: '20'
+      search_backend:
+        description: 'Search backend: serper, perplexity, or openai'
+        required: false
+        type: choice
+        default: serper
+        options:
+          - serper
+          - perplexity
+          - openai
+      since:
+        description: 'Search recency window'
+        required: false
+        type: choice
+        default: year
+        options:
+          - day
+          - week
+          - month
+          - year
+          - all
 
 permissions:
   contents: write
@@ -74,7 +99,10 @@ jobs:
           uv run autoresearch-researcher run \
             --day "${{ steps.day.outputs.day }}" \
             --output-dir daily_runs \
+            --max-tools "${{ inputs.max_tools || '20' }}" \
             --max-cost-usd "${{ inputs.max_cost_usd || '15' }}" \
+            --search-backend "${{ inputs.search_backend || 'serper' }}" \
+            --since "${{ inputs.since || 'year' }}" \
             --rerun
 
       - name: Commit and open PR
@@ -97,9 +125,10 @@ jobs:
           if gh pr view "$BRANCH" --json number >/dev/null 2>&1; then
             echo "PR already exists for $BRANCH."
           else
+            PR_BODY=$'Automated daily ResearcherAgent feed output for ${{ steps.day.outputs.day }}.\n\nThis run writes:\n- `daily_runs/${{ steps.day.outputs.day }}/items/*.json`\n- `daily_runs/${{ steps.day.outputs.day }}/manifest.json`\n- `daily_runs/${{ steps.day.outputs.day }}/_profile_runs.jsonl`\n- `daily_runs/_registry/`\n\nThe ResearcherAgent uses `researcher.md`'\\''s Query Example Pool to write search queries directly; review individual `research_run_*` / `research_<tool>` Weave traces for annotation.'
             gh pr create \
               --base main \
               --head "$BRANCH" \
               --title "daily: ${{ steps.day.outputs.day }} briefing" \
-              --body "Automated daily briefing output for ${{ steps.day.outputs.day }}."
+              --body "$PR_BODY"
           fi

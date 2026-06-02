@@ -1,14 +1,27 @@
-"""ProfilerAgent: collects detailed metadata for a single tool candidate."""
+"""ResearcherAgent: the single agent that discovers AND profiles one tool per run.
 
+Each invocation is asked to find ONE experiment-automation tool that is not yet
+covered (an exclusion list is passed at runtime), verify it, and either save a
+canonical tool profile or reject it as out of scope. When it cannot find any new
+in-scope tool it calls ``report_no_new_tool`` so the orchestrator can stop early.
+"""
+
+import json
 from pathlib import Path
 
-from agents import Agent, function_tool
+from agents import Agent, WebSearchTool, function_tool
 
-from autoresearch_researcher.agents.discovery import load_instructions
 from autoresearch_researcher.schemas.tool_profile import RejectedProfile, ToolProfile
 from autoresearch_researcher.tools.github import fetch_github_metadata
 from autoresearch_researcher.tools.persistence import save_tool_profile
-from autoresearch_researcher.tools.search import DEFAULT_SEARCH_BACKEND, SearchBackend, search_web_query
+from autoresearch_researcher.tools.search import (
+    DEFAULT_SEARCH_BACKEND,
+    RecencyWindow,
+    SearchBackend,
+    search_web_query,
+)
+
+INSTRUCTIONS_DIR = Path(__file__).parent.parent / "instructions"
 
 # Keywords that indicate a tool only searches/summarizes (not experiment automation)
 _DEEP_RESEARCH_KEYWORDS = [
@@ -41,6 +54,12 @@ _EXPERIMENT_KEYWORDS = [
 ]
 
 
+def load_instructions(agent_name: str) -> str:
+    """Load agent instructions from instructions/{agent_name}.md."""
+    path = INSTRUCTIONS_DIR / f"{agent_name}.md"
+    return path.read_text()
+
+
 def is_experiment_automation(
     autonomy_level: str,
     description: str,
@@ -52,7 +71,6 @@ def is_experiment_automation(
     """
     desc_lower = description.lower()
 
-    # Reject if description is dominated by deep-research/search keywords
     deep_count = sum(1 for kw in _DEEP_RESEARCH_KEYWORDS if kw in desc_lower)
     exp_count = sum(1 for kw in _EXPERIMENT_KEYWORDS if kw in desc_lower)
 
@@ -60,31 +78,63 @@ def is_experiment_automation(
     if deep_count > 0 and exp_count == 0:
         return False
 
-    # Analyst/Scientist level with experiment keywords → IN
     if autonomy_level.lower() in ("scientist", "analyst") and exp_count > 0:
         return True
 
-    # Tool-level that only retrieves → OUT
     if autonomy_level.lower() == "tool" and deep_count > exp_count:
         return False
 
-    # Default: if description mentions experiment execution, accept
     return exp_count > 0
 
 
-def build_profiler_agent(
+def build_researcher_agent(
     output_dir: Path,
     registry=None,
     day: str | None = None,
     search_backend: SearchBackend = DEFAULT_SEARCH_BACKEND,
+    recency: RecencyWindow | None = None,
     instructions_override: str | None = None,
 ) -> Agent:
-    """Build and return the ProfilerAgent.
+    """Build and return the single ResearcherAgent.
 
-    If `registry` is provided, save_tool_profile routes the canonical profile
-    into the global registry (and records new/updated status for the given day).
+    With a registry, ``save_tool_profile_tool`` routes the canonical profile into
+    the global registry (and records new/updated status for ``day``); ``is_known_tool``
+    reports whether a URL is already known so the agent can skip re-profiling it.
     """
     tools_dir = output_dir / "tools"
+    rejected_file = output_dir / "_rejected_profiles.jsonl"
+    no_new_file = output_dir / "_no_new_tool.jsonl"
+
+    if search_backend == "openai":
+        # Hosted web search runs server-side; needs only OPENAI_API_KEY.
+        search_tool = WebSearchTool()
+    else:
+        @function_tool
+        def search_web(query: str) -> str:
+            """Search the web using the configured backend. Returns source URLs/snippets."""
+            return search_web_query(query, backend=search_backend, recency=recency)
+
+        search_tool = search_web
+
+    @function_tool
+    def is_known_tool(url: str) -> str:
+        """Check if a tool URL is already in the global registry. Returns 'known' or 'new'."""
+        if registry is not None and registry.contains(url):
+            return f"known: {url} is already in the global registry — pick a different tool."
+        return f"new: {url} is not in the registry yet — proceed to profile it."
+
+    @function_tool
+    def fetch_github_metadata_tool(github_url: str) -> str:
+        """Fetch GitHub repository metadata (stars, last commit, open issues, license)."""
+        result = fetch_github_metadata(github_url)
+        if result is None:
+            return "Could not fetch GitHub metadata"
+        return str(result)
+
+    @function_tool
+    def save_source_tool(url: str, title: str) -> str:
+        """Register a source URL and return a placeholder source ID."""
+        return "0"
 
     @function_tool
     def save_tool_profile_tool(
@@ -106,8 +156,8 @@ def build_profiler_agent(
         project_url: str | None,
         source_ids: list[int],
     ) -> str:
-        """Save a profiled tool. With registry: routes to _registry/profiles/{slug}.md;
-        without registry: tools/{slug}.md."""
+        """Save a profiled, in-scope tool. With registry: routes to
+        _registry/profiles/{slug}.md; without registry: tools/{slug}.md."""
         profile = ToolProfile(
             slug=slug,
             name=name,
@@ -130,18 +180,14 @@ def build_profiler_agent(
 
         if registry is not None and day is not None:
             is_new = registry.add(profile, day=day)
-            # Also log to the day dir which tools became new vs. updated
             log_file = output_dir / ("_new_candidates.jsonl" if is_new else "_updated_tools.jsonl")
             log_file.parent.mkdir(parents=True, exist_ok=True)
             with log_file.open("a") as f:
-                import json
                 f.write(json.dumps({"slug": slug, "name": name, "stars": stars}) + "\n")
             return f"Saved profile to registry: {slug} ({'new' if is_new else 'updated'})"
 
         save_tool_profile(profile, tools_dir)
         return f"Saved profile: {slug}"
-
-    rejected_file = output_dir / "_rejected_profiles.jsonl"
 
     @function_tool
     def save_rejected_profile_tool(
@@ -154,7 +200,6 @@ def build_profiler_agent(
         project_url: str | None = None,
     ) -> str:
         """Reject a tool that does not meet scope, preserving reviewer-visible URLs."""
-        import json
         rejected = RejectedProfile(
             slug=slug,
             name=name,
@@ -171,35 +216,26 @@ def build_profiler_agent(
         return f"Rejected: {name} ({primary_url}) — {rejection_reason}"
 
     @function_tool
-    def fetch_github_metadata_tool(github_url: str) -> str:
-        """Fetch GitHub repository metadata (stars, last commit, open issues, license)."""
-        result = fetch_github_metadata(github_url)
-        if result is None:
-            return "Could not fetch GitHub metadata"
-        return str(result)
+    def report_no_new_tool(reason: str) -> str:
+        """Signal that no new in-scope tool could be found this run, ending the loop."""
+        no_new_file.parent.mkdir(parents=True, exist_ok=True)
+        with no_new_file.open("a") as f:
+            f.write(json.dumps({"reason": reason}) + "\n")
+        return f"No new tool found: {reason}"
 
-    @function_tool
-    def save_source_tool(url: str, title: str) -> str:
-        """Register a source URL and return a placeholder source ID."""
-        # Full source tracking implemented in US6; return stub ID for now
-        return "0"
-
-    @function_tool
-    def search_web(query: str) -> str:
-        """Search the web using the configured backend. Returns source URLs/snippets."""
-        return search_web_query(query, backend=search_backend)
-
-    instructions = instructions_override or load_instructions("profiler")
+    instructions = instructions_override or load_instructions("researcher")
 
     return Agent(
-        name="ProfilerAgent",
+        name="ResearcherAgent",
         instructions=instructions,
         tools=[
-            search_web,
-            save_tool_profile_tool,
-            save_rejected_profile_tool,
+            search_tool,
+            is_known_tool,
             fetch_github_metadata_tool,
             save_source_tool,
+            save_tool_profile_tool,
+            save_rejected_profile_tool,
+            report_no_new_tool,
         ],
         model="gpt-5.4-mini",
     )

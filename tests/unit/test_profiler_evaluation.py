@@ -123,8 +123,8 @@ def test_profile_quality_scorer_still_requires_core_profile_fields():
     assert score["missing_fields"] == ["key_limitations"]
 
 
-def test_read_profiler_output_prefers_rejected_profile(tmp_path):
-    from autoresearch_researcher.tools.evaluation import _read_profiler_output
+def test_read_researcher_output_prefers_rejected_profile(tmp_path):
+    from autoresearch_researcher.tools.evaluation import _read_researcher_output
 
     rejected = {
         "slug": "tool-a",
@@ -133,14 +133,14 @@ def test_read_profiler_output_prefers_rejected_profile(tmp_path):
     }
     (tmp_path / "_rejected_profiles.jsonl").write_text(json.dumps(rejected) + "\n")
 
-    output = _read_profiler_output(tmp_path)
+    output = _read_researcher_output(tmp_path)
 
     assert output["scope_status"] == "rejected"
     assert output["rejection_reason"] == "Rejected as out of scope."
 
 
-def test_profiler_eval_predict_fn_returns_saved_profile(tmp_path):
-    from autoresearch_researcher.tools.evaluation import make_profiler_eval_predict_fn
+def test_researcher_eval_predict_fn_returns_saved_profile(tmp_path):
+    from autoresearch_researcher.tools.evaluation import make_researcher_eval_predict_fn
 
     async def fake_run(agent, input, max_turns):
         tools_dir = tmp_path / "tool-a" / "tools"
@@ -162,7 +162,7 @@ def test_profiler_eval_predict_fn_returns_saved_profile(tmp_path):
         )
         return type("Result", (), {"final_output": "done"})()
 
-    predict = make_profiler_eval_predict_fn(output_dir=tmp_path)
+    predict = make_researcher_eval_predict_fn(output_dir=tmp_path)
     with patch("autoresearch_researcher.tools.evaluation.Runner.run", new=AsyncMock(side_effect=fake_run)):
         import asyncio
 
@@ -178,7 +178,7 @@ def test_profiler_eval_predict_fn_returns_saved_profile(tmp_path):
     assert output["profile"]["license"] == "Apache-2.0"
 
 
-def test_run_profiler_evaluation_uses_local_rows_without_publishing_dataset(tmp_path):
+def test_run_researcher_evaluation_uses_local_rows_without_publishing_dataset(tmp_path):
     from autoresearch_researcher.tools import evaluation as evaluation_module
 
     dataset_path = tmp_path / "dataset.jsonl"
@@ -205,7 +205,7 @@ def test_run_profiler_evaluation_uses_local_rows_without_publishing_dataset(tmp_
 
     with patch.object(evaluation_module.weave, "Dataset") as dataset_cls, \
         patch.object(evaluation_module.weave, "Evaluation", FakeEvaluation):
-        result = evaluation_module.run_profiler_evaluation(
+        result = evaluation_module.run_researcher_evaluation(
             dataset_path=dataset_path,
             output_dir=tmp_path / "out",
         )
@@ -217,7 +217,7 @@ def test_run_profiler_evaluation_uses_local_rows_without_publishing_dataset(tmp_
     assert callable(captured["model"])
 
 
-def test_run_profiler_evaluation_reuses_dataset_ref_object(tmp_path):
+def test_run_researcher_evaluation_reuses_dataset_ref_object(tmp_path):
     from autoresearch_researcher.tools import evaluation as evaluation_module
 
     fake_dataset = type("FakeDataset", (), {"rows": [{"input_tool_name": "Tool A"}]})()
@@ -237,7 +237,7 @@ def test_run_profiler_evaluation_reuses_dataset_ref_object(tmp_path):
     with patch.object(evaluation_module.weave, "ref", return_value=FakeRef()) as ref, \
         patch.object(evaluation_module.weave, "Dataset") as dataset_cls, \
         patch.object(evaluation_module.weave, "Evaluation", FakeEvaluation):
-        result = evaluation_module.run_profiler_evaluation(
+        result = evaluation_module.run_researcher_evaluation(
             dataset_ref="weave:///entity/project/object/profiler-eval-dataset:v1",
             output_dir=tmp_path / "out",
         )

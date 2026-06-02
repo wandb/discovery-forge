@@ -101,6 +101,27 @@ def test_run_defaults_to_20_max_tools(tmp_path):
         assert call_kwargs["max_tools"] == 20
 
 
+def test_run_defaults_recency_to_month(tmp_path):
+    with patch("autoresearch_researcher.cli.run_briefing", new_callable=AsyncMock) as mock_run:
+        mock_run.return_value = None
+        runner.invoke(app, ["run", "--day", "2026-05-28", "--output-dir", str(tmp_path)])
+        assert mock_run.call_args.kwargs["recency"] == "month"
+
+
+def test_run_since_flag_passes_recency(tmp_path):
+    with patch("autoresearch_researcher.cli.run_briefing", new_callable=AsyncMock) as mock_run:
+        mock_run.return_value = None
+        runner.invoke(app, ["run", "--day", "2026-05-28", "--since", "week", "--output-dir", str(tmp_path)])
+        assert mock_run.call_args.kwargs["recency"] == "week"
+
+
+def test_run_since_all_disables_recency(tmp_path):
+    with patch("autoresearch_researcher.cli.run_briefing", new_callable=AsyncMock) as mock_run:
+        mock_run.return_value = None
+        runner.invoke(app, ["run", "--day", "2026-05-28", "--since", "all", "--output-dir", str(tmp_path)])
+        assert mock_run.call_args.kwargs["recency"] is None
+
+
 def test_run_dry_run_flag(tmp_path):
     with patch("autoresearch_researcher.cli.run_briefing", new_callable=AsyncMock) as mock_run:
         mock_run.return_value = None
@@ -111,12 +132,6 @@ def test_run_dry_run_flag(tmp_path):
         ])
         call_kwargs = mock_run.call_args.kwargs
         assert call_kwargs["dry_run"] is True
-
-
-def test_diff_subcommand_exists():
-    result = runner.invoke(app, ["diff", "--help"])
-    assert result.exit_code == 0
-    assert "day" in result.output.lower()
 
 
 def test_feedback_ingest_subcommand_exists():

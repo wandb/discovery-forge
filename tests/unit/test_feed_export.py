@@ -38,9 +38,6 @@ def _bootstrap_day_dir(day_dir: Path) -> None:
         "started_at": "2026-05-28T00:00:00+00:00",
         "finished_at": "2026-05-28T00:05:00+00:00",
     }))
-    (day_dir / "draft.md").write_text("# Daily Briefing\n\nBody")
-    (day_dir / "comparison_table.md").write_text("| Tool Name |\n|---|\n| Tool A |\n")
-    (day_dir / "highlights.md").write_text("## Today's Highlights\n")
     (day_dir / "_candidates.jsonl").write_text(
         json.dumps({"name": "Tool A", "url": "https://github.com/example/tool-a"}) + "\n"
     )
@@ -57,7 +54,7 @@ def _bootstrap_day_dir(day_dir: Path) -> None:
     _write_profile(day_dir / "tools")
 
 
-def test_build_feed_output_writes_manifest_items_report_and_raw(tmp_path):
+def test_build_feed_output_writes_manifest_items_and_raw(tmp_path):
     from autoresearch_researcher.tools.feed import build_feed_output
 
     day_dir = tmp_path / "2026-05-28"
@@ -90,11 +87,11 @@ def test_build_feed_output_writes_manifest_items_report_and_raw(tmp_path):
     assert item_file["weaveTraceId"] == "call-tool-a"
     assert item_file["contentHash"]
 
-    assert (day_dir / "report.md").read_text() == "# Daily Briefing\n\nBody"
+    assert not (day_dir / "report.md").exists()
     assert (day_dir / "raw" / "candidates.jsonl").exists()
     assert (day_dir / "raw" / "new_candidates.jsonl").exists()
-    assert (day_dir / "raw" / "comparison_table.md").exists()
     assert (day_dir / "raw" / "run_metadata.json").exists()
+    assert not (day_dir / "raw" / "comparison_table.md").exists()
 
 
 def test_feed_metadata_for_profile_matches_manifest_item_projection():

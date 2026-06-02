@@ -8,7 +8,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
 
-TARGET_ANNOTATION_RE = re.compile(r"(?:^|\.)(D(\d{8})_(Discovery|Profiler))$")
+TARGET_ANNOTATION_RE = re.compile(r"(?:^|\.)(D(\d{8})_Research)$")
 
 
 def load_profile_runs(day_dir: Path) -> list[dict[str, Any]]:
@@ -67,7 +67,11 @@ def collect_call_feedback(client: Any, call_id: str) -> list[dict[str, Any]]:
 
 
 def annotation_target_prompt(feedback: dict[str, Any], day: str) -> str | None:
-    """Return the prompt file targeted by a day-scoped annotation name."""
+    """Return the prompt file targeted by a day-scoped annotation name.
+
+    With the single ResearcherAgent there is one prompt; any `D{YYYYMMDD}_Research`
+    annotation for the matching day routes to `researcher.md`.
+    """
     day_token = _day_annotation_token(day)
     if day_token is None:
         return None
@@ -79,8 +83,7 @@ def annotation_target_prompt(feedback: dict[str, Any], day: str) -> str | None:
         annotation_day = match.group(2)
         if annotation_day != day_token:
             continue
-        agent_name = match.group(3).lower()
-        return "discovery" if agent_name == "discovery" else "profiler"
+        return "researcher"
     return None
 
 
@@ -286,7 +289,7 @@ def render_prompt_improvement_notes(events: list[dict[str, Any]]) -> str:
         for target_prompt, count in target_counts.most_common():
             lines.append(f"- `{target_prompt}.md`: {count}")
     else:
-        lines.append("- No day-scoped `D{YYYYMMDD}_Discovery` or `D{YYYYMMDD}_Profiler` annotations found.")
+        lines.append("- No day-scoped `D{YYYYMMDD}_Research` annotations found.")
     lines.append("")
 
     lines.append("## Tool Feedback")
@@ -307,7 +310,7 @@ def render_prompt_improvement_notes(events: list[dict[str, Any]]) -> str:
 
     lines.append("## Suggested Prompt Review")
     lines.append("")
-    lines.append("- Review ProfilerAgent instructions for repeated `scope_filter`, `search_query`, `source_selection`, or `metadata_extraction` issues.")
+    lines.append("- Review researcher.md for repeated `scope_filter`, `search_query`, `source_selection`, or `metadata_extraction` issues.")
     lines.append("- Apply prompt edits manually after checking the referenced Weave calls.")
     lines.append("")
     return "\n".join(lines)

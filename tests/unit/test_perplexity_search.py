@@ -70,6 +70,36 @@ def test_serper_search_uses_serper_endpoint(monkeypatch):
         assert headers["X-API-KEY"] == "test-key"
 
 
+def test_serper_search_adds_tbs_when_recency_set(monkeypatch):
+    from autoresearch_researcher.tools.search import serper_search
+
+    monkeypatch.setenv("SERPER_API_KEY", "test-key")
+    with patch("autoresearch_researcher.tools.search.httpx.Client") as MockClient:
+        mock_client = MockClient.return_value.__enter__.return_value
+        mock_client.post.return_value.json.return_value = {"organic": []}
+        mock_client.post.return_value.raise_for_status = MagicMock()
+
+        serper_search("test query", recency="month")
+
+        body = mock_client.post.call_args.kwargs.get("json", {})
+        assert body["tbs"] == "qdr:m"
+
+
+def test_serper_search_omits_tbs_when_no_recency(monkeypatch):
+    from autoresearch_researcher.tools.search import serper_search
+
+    monkeypatch.setenv("SERPER_API_KEY", "test-key")
+    with patch("autoresearch_researcher.tools.search.httpx.Client") as MockClient:
+        mock_client = MockClient.return_value.__enter__.return_value
+        mock_client.post.return_value.json.return_value = {"organic": []}
+        mock_client.post.return_value.raise_for_status = MagicMock()
+
+        serper_search("test query")
+
+        body = mock_client.post.call_args.kwargs.get("json", {})
+        assert "tbs" not in body
+
+
 def test_serper_search_without_api_key_returns_error(monkeypatch):
     from autoresearch_researcher.tools.search import serper_search
 
@@ -82,15 +112,17 @@ def test_serper_search_without_api_key_returns_error(monkeypatch):
 def test_search_web_query_routes_to_serper(monkeypatch):
     from autoresearch_researcher.tools import search
 
-    monkeypatch.setattr(search, "serper_search", lambda query: f"serper:{query}")
-    assert search.search_web_query("abc", backend="serper") == "serper:abc"
+    monkeypatch.setattr(search, "serper_search", lambda query, recency=None: f"serper:{query}:{recency}")
+    assert search.search_web_query("abc", backend="serper") == "serper:abc:None"
+    assert search.search_web_query("abc", backend="serper", recency="month") == "serper:abc:month"
 
 
 def test_search_web_query_routes_to_perplexity(monkeypatch):
     from autoresearch_researcher.tools import search
 
-    monkeypatch.setattr(search, "perplexity_search", lambda query: f"pplx:{query}")
-    assert search.search_web_query("abc", backend="perplexity") == "pplx:abc"
+    monkeypatch.setattr(search, "perplexity_search", lambda query, recency=None: f"pplx:{query}:{recency}")
+    assert search.search_web_query("abc", backend="perplexity") == "pplx:abc:None"
+    assert search.search_web_query("abc", backend="perplexity", recency="year") == "pplx:abc:year"
 
 
 def test_search_web_query_rejects_unknown_backend():
@@ -133,6 +165,34 @@ def test_perplexity_search_includes_citations(monkeypatch):
         result = perplexity_search("autonomous experiment agent 2024")
 
     assert "github.com/x/toolx" in result or "arxiv.org" in result
+
+
+def test_perplexity_search_sets_recency_filter_when_given(monkeypatch):
+    from autoresearch_researcher.tools.search import perplexity_search
+    monkeypatch.setenv("PERPLEXITY_API_KEY", "test-key")
+
+    with patch("autoresearch_researcher.tools.search.httpx.Client") as MockClient:
+        mock_client = MockClient.return_value.__enter__.return_value
+        mock_client.post.return_value.json.return_value = {"choices": [{"message": {"content": "x"}}], "citations": []}
+        mock_client.post.return_value.raise_for_status = MagicMock()
+
+        perplexity_search("test query", recency="week")
+        body = mock_client.post.call_args.kwargs.get("json", {})
+        assert body["search_recency_filter"] == "week"
+
+
+def test_perplexity_search_omits_recency_filter_when_none(monkeypatch):
+    from autoresearch_researcher.tools.search import perplexity_search
+    monkeypatch.setenv("PERPLEXITY_API_KEY", "test-key")
+
+    with patch("autoresearch_researcher.tools.search.httpx.Client") as MockClient:
+        mock_client = MockClient.return_value.__enter__.return_value
+        mock_client.post.return_value.json.return_value = {"choices": [{"message": {"content": "x"}}], "citations": []}
+        mock_client.post.return_value.raise_for_status = MagicMock()
+
+        perplexity_search("test query")
+        body = mock_client.post.call_args.kwargs.get("json", {})
+        assert "search_recency_filter" not in body
 
 
 def test_perplexity_search_uses_correct_api_endpoint(monkeypatch):
@@ -199,11 +259,17 @@ def test_perplexity_search_without_api_key_returns_error(monkeypatch):
 
 # ── Discovery agent uses configured search backend ──────────────────────────
 
-def test_discovery_agent_has_search_tool():
-    from autoresearch_researcher.agents.discovery import build_discovery_agent
-    agent = build_discovery_agent(output_dir=Path("/tmp"))
+def test_researcher_agent_has_search_tool():
+    from autoresearch_researcher.agents.researcher import build_researcher_agent
+    agent = build_researcher_agent(output_dir=Path("/tmp"))
     tool_names = [t.name if hasattr(t, "name") else str(t) for t in agent.tools]
     assert any("search" in name.lower() for name in tool_names)
+
+
+def test_search_web_query_openai_backend_is_handled_at_agent_level():
+    from autoresearch_researcher.tools.search import search_web_query
+    result = search_web_query("anything", backend="openai")
+    assert "WebSearchTool" in result
 
 
 def test_env_example_has_search_backend_keys():

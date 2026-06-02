@@ -12,13 +12,11 @@ from pathlib import Path
 
 from agents import Agent, function_tool
 
-from autoresearch_researcher.agents.discovery import load_instructions
+from autoresearch_researcher.agents.researcher import load_instructions
 
 
 PROMPT_FILENAMES = {
-    "discovery": "discovery.md",
-    "profiler": "profiler.md",
-    "writer": "writer.md",
+    "researcher": "researcher.md",
 }
 
 
@@ -63,23 +61,9 @@ def build_prompt_applier_agent(
     instructions_dir.mkdir(parents=True, exist_ok=True)
 
     @function_tool
-    def update_discovery_instructions(content: str) -> str:
-        """Overwrite instructions/discovery.md with the full new Markdown content."""
-        path = instructions_dir / PROMPT_FILENAMES["discovery"]
-        path.write_text(content)
-        return f"Updated {path}"
-
-    @function_tool
-    def update_profiler_instructions(content: str) -> str:
-        """Overwrite instructions/profiler.md with the full new Markdown content."""
-        path = instructions_dir / PROMPT_FILENAMES["profiler"]
-        path.write_text(content)
-        return f"Updated {path}"
-
-    @function_tool
-    def update_writer_instructions(content: str) -> str:
-        """Overwrite instructions/writer.md with the full new Markdown content."""
-        path = instructions_dir / PROMPT_FILENAMES["writer"]
+    def update_researcher_instructions(content: str) -> str:
+        """Overwrite instructions/researcher.md with the full new Markdown content."""
+        path = instructions_dir / PROMPT_FILENAMES["researcher"]
         path.write_text(content)
         return f"Updated {path}"
 
@@ -89,9 +73,7 @@ def build_prompt_applier_agent(
         name="PromptImprovementApplierAgent",
         instructions=instructions,
         tools=[
-            update_discovery_instructions,
-            update_profiler_instructions,
-            update_writer_instructions,
+            update_researcher_instructions,
         ],
         model="gpt-5.4-mini",
     )
