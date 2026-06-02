@@ -49,6 +49,37 @@ def test_stage_run_config_names_research_workflow():
     }
 
 
+def test_render_research_prompt_includes_query_pool_hint_and_recency():
+    from autoresearch_researcher.orchestrator import render_research_prompt
+
+    prompt = render_research_prompt(
+        day="2026-05-28",
+        exclusion_block="- Known Tool (https://example.com/known)",
+        iteration=1,
+        recency="month",
+    )
+
+    assert "Iteration: 1" in prompt
+    assert "Query Example Pool" in prompt
+    assert "write your own search queries" in prompt
+    assert "Known Tool" in prompt
+    assert "last month" in prompt
+    assert "Search budget" in prompt
+
+
+def test_render_research_prompt_keeps_iteration_number_for_repeated_runs():
+    from autoresearch_researcher.orchestrator import render_research_prompt
+
+    prompt = render_research_prompt(
+        day="2026-05-28",
+        exclusion_block="(none yet)",
+        iteration=11,
+    )
+
+    assert "Iteration: 11" in prompt
+    assert "Choose a different search angle than earlier runs when possible" in prompt
+
+
 def test_patch_weave_agent_span_names_names_task_and_turn_spans():
     from agents.tracing import TaskSpanData, TurnSpanData
     from weave.integrations.openai_agents import openai_agents as weave_openai_agents
@@ -128,13 +159,23 @@ def test_profile_review_output_for_accepted_profile():
     assert output["verdict"] == "accepted"
     assert output["tool_name"] == "Tool A"
     assert output["primary_url"] == "https://github.com/example/tool-a"
-    assert output["profile_path"] == "daily_runs/_registry/profiles/tool-a.md"
-    assert output["feed_item_id"] == "tool-a"
-    assert output["feed_item_path"] == "items/tool-a.json"
-    assert output["feed_canonical_url"] == "https://github.com/example/tool-a"
-    assert output["feed_dedupe_key"].startswith("url:")
-    assert output["feed_tags"] == ["github"]
-    assert output["feed_manifest_path"] == "manifest.json"
+    assert output["github_url"] == "https://github.com/example/tool-a"
+    assert output["paper_url"] is None
+    assert output["project_url"] is None
+    assert output["key_limitations"] == ["Needs GPU"]
+    assert output["tags"] == ["github"]
+    for removed_field in [
+        "source_ids",
+        "profile_path",
+        "prompt_ref",
+        "feed_item_id",
+        "feed_item_path",
+        "feed_dedupe_key",
+        "feed_canonical_url",
+        "feed_tags",
+        "feed_manifest_path",
+    ]:
+        assert removed_field not in output
     assert "Tool Profile Review: Tool A" in output["profile_review_markdown"]
     assert "Needs GPU" in output["profile_review_markdown"]
 
@@ -152,8 +193,9 @@ def test_profile_review_output_for_rejected_profile():
     assert output["verdict"] == "rejected"
     assert output["primary_url"] == "https://example.com/tool-a"
     assert output["rejection_reason"] == "Curated list only."
-    assert output["feed_item_id"] is None
-    assert output["feed_item_path"] is None
+    assert output["tags"] == []
+    assert "feed_item_id" not in output
+    assert "feed_item_path" not in output
     assert "Primary URL: https://example.com/tool-a" in output["profile_review_markdown"]
     assert "Curated list only." in output["profile_review_markdown"]
 
@@ -237,7 +279,7 @@ def test_trace_end_relabels_research_call_with_tool_name(monkeypatch):
 
     processor.on_trace_end(SimpleNamespace(trace_id="trace-1", name="stage_research_3"))
 
-    assert renamed["name"] == "DeepScientist"
+    assert renamed["name"] == "research_DeepScientist"
 
 
 def test_trace_end_skips_relabel_when_no_profile(monkeypatch):
@@ -342,6 +384,8 @@ async def test_dry_run_writes_profiles_runs_and_feed(tmp_path):
     assert all(row["run_id"] == metadata["run_id"] for row in rows)
     assert all(row["workflow_name"].startswith("stage_research_") for row in rows)
     assert all(row["search_backend"] == "serper" for row in rows)
+    assert all("search_lane_id" not in row for row in rows)
+    assert all("search_lane_label" not in row for row in rows)
 
     assert (tmp_path / "manifest.json").exists()
     assert (tmp_path / "items").exists()

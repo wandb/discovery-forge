@@ -26,6 +26,13 @@ def test_researcher_instructions_contain_scope_filter_rule():
     assert any(kw in content for kw in ["search", "summariz", "retriev"])
 
 
+def test_researcher_instructions_do_not_hardcode_search_years():
+    content = INSTR.read_text()
+    assert "2024" not in content
+    assert "2025" not in content
+    assert "2026" not in content
+
+
 def test_load_instructions_returns_string():
     from autoresearch_researcher.agents.researcher import load_instructions
     text = load_instructions("researcher")

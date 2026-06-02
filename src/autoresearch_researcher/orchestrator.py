@@ -176,15 +176,15 @@ class AutoresearchWeaveTracingProcessor(WeaveTracingProcessor):
         return {}
 
     def _research_display_name(self, trace_id: str) -> str | None:
-        """Tool name for a finished research trace (accepted or rejected), if known."""
+        """Display name for a finished research trace, if the tool is known."""
         profile = self._accepted_profiles.get(trace_id) or self._rejected_profiles.get(trace_id)
         if not profile:
             return None
         name = profile.get("name") or profile.get("slug")
-        return str(name) if name else None
+        return f"research_{name}" if name else None
 
     def _set_research_display_name(self, call, trace_id: str) -> None:
-        """Relabel a research call with the tool name (best-effort; never fatal)."""
+        """Relabel a research call with a tool-specific display name (best-effort)."""
         display = self._research_display_name(trace_id)
         if not display:
             return
@@ -332,6 +332,9 @@ def profile_review_output(profile: dict[str, Any], *, status: str) -> dict[str, 
         or profile.get("url")
         or "unknown"
     )
+    tags = []
+    if status == "accepted":
+        tags = feed_metadata_for_profile(profile)["feed_tags"]
     output = {
         "profile_review_markdown": render_profile_review_markdown(profile, status=status),
         "verdict": status,
@@ -345,21 +348,8 @@ def profile_review_output(profile: dict[str, Any], *, status: str) -> dict[str, 
         "paper_url": profile.get("paper_url"),
         "project_url": profile.get("project_url"),
         "key_limitations": profile.get("key_limitations"),
-        "source_ids": profile.get("source_ids"),
-        "profile_path": f"daily_runs/_registry/profiles/{slug}.md" if status == "accepted" else None,
-        "prompt_ref": profile.get("researcher_prompt_ref"),
+        "tags": tags,
     }
-    if status == "accepted":
-        output.update(feed_metadata_for_profile(profile))
-    else:
-        output.update({
-            "feed_item_id": None,
-            "feed_item_path": None,
-            "feed_dedupe_key": None,
-            "feed_canonical_url": None,
-            "feed_tags": [],
-            "feed_manifest_path": None,
-        })
     return output
 
 
@@ -518,6 +508,36 @@ def build_exclusion_block(registry, output_dir: Path) -> str:
     return "\n".join(lines) if lines else "(none yet)"
 
 
+def render_research_prompt(
+    *,
+    day: str,
+    exclusion_block: str,
+    iteration: int,
+    recency: RecencyWindow | None = None,
+) -> str:
+    """Render the per-tool ResearcherAgent prompt."""
+    recency_hint = f" Prefer tools and sources from the last {recency}." if recency else ""
+    return (
+        f"Find ONE new experiment-automation tool for {day} and profile it.\n\n"
+        f"Iteration: {iteration}\n"
+        "Use the Query Example Pool in your system instructions as inspiration, "
+        "then write your own search queries for this run. "
+        "Choose a different search angle than earlier runs when possible.\n\n"
+        "Search budget:\n"
+        "- Start with 2-3 adapted queries inspired by the pool.\n"
+        "- Do not repeat the same broad query unless narrower searches fail.\n"
+        "- Prefer choosing a promising candidate after 2-3 searches over exhaustive re-searching.\n\n"
+        "Already covered — do NOT re-profile any of these:\n"
+        f"{exclusion_block}\n\n"
+        "Search the web for a single in-scope tool that is not in the list above."
+        f"{recency_hint} "
+        "Call is_known_tool(url) before committing to a candidate. "
+        "If in scope, save sources then call save_tool_profile_tool. "
+        "If out of scope, call save_rejected_profile_tool with a clear reason. "
+        "If you cannot find any new in-scope tool, call report_no_new_tool."
+    )
+
+
 def _registry_url_for_slug(registry, slug: str) -> str | None:
     for entry in registry.get_all_entries():
         if entry.slug == slug:
@@ -663,19 +683,11 @@ async def run_briefing(
             workflow_name = f"stage_research_{i + 1}"
             trace_id = gen_trace_id()
             exclusion_block = build_exclusion_block(registry, output_dir)
-            recency_hint = (
-                f" Prefer tools and sources from the last {recency}." if recency else ""
-            )
-            research_prompt = (
-                f"Find ONE new experiment-automation tool for {day} and profile it.\n\n"
-                "Already covered — do NOT re-profile any of these:\n"
-                f"{exclusion_block}\n\n"
-                "Search the web for a single in-scope tool that is not in the list above."
-                f"{recency_hint} "
-                "Call is_known_tool(url) before committing to a candidate. "
-                "If in scope, save sources then call save_tool_profile_tool. "
-                "If out of scope, call save_rejected_profile_tool with a clear reason. "
-                "If you cannot find any new in-scope tool, call report_no_new_tool."
+            research_prompt = render_research_prompt(
+                day=day,
+                exclusion_block=exclusion_block,
+                iteration=i + 1,
+                recency=recency,
             )
 
             agent = build_researcher_agent(

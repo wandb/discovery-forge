@@ -25,13 +25,15 @@ You MUST call `save_improvement_plan(content)` exactly once at the end of your t
    - Comments like `good` / `Good.` / `Good` confirm desired behavior; preserve that behavior in the prompt as an example of what to keep doing.
    - Comments expressing dissatisfaction, a missed scope rule, or a wrong outcome are the source of prompt changes.
 3. **Cluster negative feedback into failure modes.** Identify recurring patterns (for example, "curated/awesome lists are not rejected", "tool is not actually a self-improving agent but was profiled anyway", "URL points to a list instead of the tool", "metadata field was wrong").
-4. **Propose concrete prompt edits to `researcher.md`.** For every change, write the actual new or replacement Markdown lines. Do not leave abstract advice like "be stricter". Show:
+4. **Improve query behavior through the prompt.** When feedback points to poor search behavior, propose edits to `researcher.md`'s Query Example Pool, search instructions, or rejection wording. Use the actual `search_web` query text visible in the Weave trace as evidence when humans mention it.
+5. **Keep the baseline useful for hands-on learning.** Do not make the prompt so strict that it eliminates all reviewable mistakes. Prefer targeted fixes that address repeated feedback while preserving some room for human annotation.
+6. **Propose concrete prompt edits to `researcher.md`.** For every change, write the actual new or replacement Markdown lines. Do not leave abstract advice like "be stricter". Show:
    - Exact phrases / bullet points to add
    - Existing lines to tighten or replace
    - Example wording the agent should adopt
    - Optionally, a unified diff illustrating the change
-5. **Be minimal and targeted.** Edit only what the feedback justifies. Do not rewrite the entire prompt.
-6. **Separate code-scope items.** If feedback implies a Python / orchestrator / tool / registry / schema bug, list it under `## Out of scope (code change required)` and do not propose any prompt edits for it.
+7. **Be minimal and targeted.** Edit only what the feedback justifies. Do not rewrite the entire prompt.
+8. **Separate code-scope items.** If feedback implies a Python / orchestrator / tool / registry / schema bug, list it under `## Out of scope (code change required)` and do not propose any prompt edits for it.
 
 ## Required Output Format
 

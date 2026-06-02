@@ -36,6 +36,7 @@ Each run is told what is already covered (an exclusion list built from the regis
 │  • Sequential loop: run ResearcherAgent up to --max-tools times   │
 │  • Loads ToolRegistry from daily_runs/_registry/ once per run     │
 │  • Builds a per-run exclusion list (registry + this run's saves)  │
+│  • Passes iteration/exclusion/recency; agent writes search queries│
 │  • CostBudget: enforces --max-cost-usd, graceful shutdown         │
 │  • Weave traces: one stage_research_{i} trace per tool            │
 │  • After the loop: build_feed_output → items/* + manifest.json    │
@@ -74,7 +75,7 @@ daily_runs/{day}/
   manifest.json                     ← Agentforge feed manifest
   items/{slug}.json                 ← one structured feed item per accepted profile
   raw/                              ← copy of source artifacts for debugging/sync fallback
-  _profile_runs.jsonl               ← slug/status/workflow_name/agent_trace_id/weave_call_id per research trace
+  _profile_runs.jsonl               ← slug/status/workflow/agent_trace_id/weave_call_id per trace
   _new_candidates.jsonl             ← tools profiled for the first time today
   _updated_tools.jsonl             ← tools whose stars/last_commit changed
   _rejected_profiles.jsonl          ← out-of-scope tools (with reasons)
@@ -126,6 +127,8 @@ daily_runs/
 ```
 
 Each daily run loads the registry, then loops: every ResearcherAgent run gets the exclusion list and calls `is_known_tool(url)` before committing to a candidate, so already-known tools are skipped (saving search / LLM cost). Accepted profiles are written straight into the registry; metadata changes (stars, last commit) on existing tools are detected and logged to `_updated_tools.jsonl`. Each run is recorded in `_profile_runs.jsonl` with the `run_id`, status, `workflow_name`, `agent_trace_id`, prompt hash, and Weave call ID so a human can review and annotate that tool trace directly. After the loop, the feed builder turns the registry profiles into `items/*.json` + `manifest.json`.
+
+The ResearcherAgent writes its own `search_web` queries each run, using the Query Example Pool in `instructions/researcher.md` as inspiration plus the run's exclusion list and recency hint. This keeps the implementation simple and makes query strategy prompt-editable: human annotations can improve the pool, rejection wording, or search instructions through the normal prompt-only loop.
 
 ---
 
@@ -256,7 +259,7 @@ The agent instructions live as a separate Markdown file under `src/autoresearch_
 
 ```
 instructions/
-├── researcher.md       # scope definition, search strategy, profiling + citation rules
+├── researcher.md       # scope definition, Query Example Pool, profiling + citation rules
 ├── prompt_proposer.md  # how the improvement proposer behaves
 └── prompt_applier.md   # how the improvement applier rewrites researcher.md
 ```

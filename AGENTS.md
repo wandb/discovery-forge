@@ -196,20 +196,29 @@ import weave
 
 async def run_briefing(day_id: str):
     for i in range(max_tools):
-        with weave.attributes({"day": day_id, "stage": "research", "iteration": i + 1}):
+        with weave.attributes({
+            "day": day_id,
+            "stage": "research",
+            "iteration": i + 1,
+        }):
             await Runner.run(
                 researcher_agent,
                 ...,
                 run_config=RunConfig(
                     workflow_name=f"stage_research_{i + 1}",
                     group_id=run_id,
-                    trace_metadata={"day": day_id, "run_id": run_id, "stage": "research"},
+                    trace_metadata={
+                        "day": day_id,
+                        "run_id": run_id,
+                        "stage": "research",
+                        "iteration": i + 1,
+                    },
                 ),
             )
     # after the loop: build_feed_output(...) -> items/* + manifest.json
 ```
 
-The displayed review unit is the named Agents SDK trace `stage_research_{i}` — one run per tool. Each is linked from `_profile_runs.jsonl` by `weave_call_id`, `agent_trace_id`, `workflow_name`, `run_id`, `slug`, `status`, and the researcher prompt hash. Do not add a separate `daily_run` trace unless it carries real diagnostic detail; the daily summary belongs in `run_metadata.json`.
+The displayed review unit is the named Agents SDK trace `stage_research_{i}` — one run per tool. The orchestrator no longer assigns a search lane; it passes the iteration, exclusion list, and recency hint, while the ResearcherAgent uses the Query Example Pool in `researcher.md` to write its own search queries. Each trace is linked from `_profile_runs.jsonl` by `weave_call_id`, `agent_trace_id`, `workflow_name`, `run_id`, `slug`, `status`, and the researcher prompt hash. Do not add a separate `daily_run` trace unless it carries real diagnostic detail; the daily summary belongs in `run_metadata.json`.
 
 Always pass a named `RunConfig` to `Runner.run()` so Weave shows `stage_research_{i}` instead of the SDK default `Agent workflow`. `init_observability()` uses `AutoresearchWeaveTracingProcessor`, which records the Weave call ID for each Agents trace and hides SDK task/turn spans while re-parenting their child tool calls to the nearest visible agent call. A run should read as `stage_research_{i} → ResearcherAgent → openai.responses.create/search_web/save_*`.
 
