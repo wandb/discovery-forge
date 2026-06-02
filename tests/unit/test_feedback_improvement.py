@@ -1,4 +1,4 @@
-"""Tests for the LLM-driven prompt-only improvement proposer/applier."""
+"""Tests for the LLM-driven prompt-only improvement proposer/applier (single prompt)."""
 
 import json
 from pathlib import Path
@@ -20,19 +20,7 @@ def _event(*, name: str, note: str, slug: str | None = None) -> dict:
         "slug": slug or name.lower().replace(" ", "-"),
         "weave_call_id": "call-1",
         "feedback": {
-            "feedback_type": "wandb.annotation.ProfilerAgentScorer",
-            "payload": {"value": note},
-        },
-    }
-
-
-def _targeted_event(*, target: str, day: int, note: str, call_id: str = "call-1") -> dict:
-    return {
-        "day": f"2026-05-{day:02d}",
-        "weave_call_id": call_id,
-        "target_prompt": target.lower(),
-        "feedback": {
-            "feedback_type": f"wandb.annotation.D202605{day:02d}_{target}",
+            "feedback_type": "wandb.annotation.D20260528_Research",
             "payload": {"value": note},
         },
     }
@@ -47,9 +35,7 @@ def _write_feedback(day_dir: Path, events: list[dict]) -> None:
 
 def _bootstrap_instructions(instructions_dir: Path) -> None:
     instructions_dir.mkdir(parents=True, exist_ok=True)
-    (instructions_dir / "discovery.md").write_text("# Discovery\nSeed discovery rules.\n")
-    (instructions_dir / "profiler.md").write_text("# Profiler\nSeed profiler rules.\n")
-    (instructions_dir / "writer.md").write_text("# Writer\nSeed writer rules.\n")
+    (instructions_dir / "researcher.md").write_text("# Researcher\nSeed researcher rules.\n")
 
 
 def test_load_feedback_context_reads_all_artifacts(tmp_path):
@@ -64,25 +50,21 @@ def test_load_feedback_context_reads_all_artifacts(tmp_path):
     assert context.feedback_events[0]["name"] == "Tool A"
 
 
-def test_annotation_target_prompt_routes_day_scoped_annotations():
+def test_annotation_target_prompt_routes_research_annotations():
     from autoresearch_researcher.tools.feedback import annotation_target_prompt
 
     assert annotation_target_prompt(
-        {"feedback_type": "wandb.annotation.D20260528_Discovery"},
+        {"feedback_type": "wandb.annotation.D20260528_Research"},
         "2026-05-28",
-    ) == "discovery"
+    ) == "researcher"
     assert annotation_target_prompt(
-        {"feedback_type": "wandb.annotation.D20260528_Profiler"},
-        "2026-05-28",
-    ) == "profiler"
-    assert annotation_target_prompt(
-        {"feedback_type": "wandb.annotation.D20260527_Discovery"},
+        {"feedback_type": "wandb.annotation.D20260527_Research"},
         "2026-05-28",
     ) is None
     assert annotation_target_prompt(
-        {"annotation_queue_name": "D20260528_Profiler"},
+        {"annotation_queue_name": "D20260528_Research"},
         "2026-05-28",
-    ) == "profiler"
+    ) == "researcher"
 
 
 def test_enrich_feedback_resolves_annotation_queue_name():
@@ -92,7 +74,7 @@ def test_enrich_feedback_resolves_annotation_queue_name():
         def annotation_queue_read(self, req):
             assert req.project_id == "entity/project"
             assert req.queue_id == "queue-1"
-            return SimpleNamespace(queue=SimpleNamespace(name="D20260528_Profiler"))
+            return SimpleNamespace(queue=SimpleNamespace(name="D20260528_Research"))
 
     client = SimpleNamespace(
         server=FakeServer(),
@@ -104,10 +86,10 @@ def test_enrich_feedback_resolves_annotation_queue_name():
         {"queue_id": "queue-1", "feedback_type": "wandb.annotation.QualityReviewer"},
     )
 
-    assert feedback["annotation_queue_name"] == "D20260528_Profiler"
+    assert feedback["annotation_queue_name"] == "D20260528_Research"
 
 
-def test_feedback_ingest_collects_day_scoped_discovery_and_profiler_annotations(tmp_path):
+def test_feedback_ingest_collects_day_scoped_research_annotations(tmp_path):
     from autoresearch_researcher.tools.feedback import ingest_feedback
 
     profile_run = {
@@ -122,50 +104,30 @@ def test_feedback_ingest_collects_day_scoped_discovery_and_profiler_annotations(
 
     feedback_items = [
         SimpleNamespace(
-            id="fb-discovery",
-            feedback_type="wandb.annotation.D20260528_Discovery",
-            payload={"value": "Discovery picked the wrong URL."},
-            call_id="discovery-call",
-        ),
-        SimpleNamespace(
-            id="fb-profiler",
-            feedback_type="wandb.annotation.D20260528_Profiler",
-            payload={"value": "Profiler should reject this scoped-out tool."},
+            id="fb-research",
+            feedback_type="wandb.annotation.D20260528_Research",
+            payload={"value": "Researcher should reject this scoped-out tool."},
             call_id="profile-call",
         ),
         SimpleNamespace(
             id="fb-other-day",
-            feedback_type="wandb.annotation.D20260527_Discovery",
+            feedback_type="wandb.annotation.D20260527_Research",
             payload={"value": "Old day feedback."},
             call_id="old-call",
         ),
     ]
-
-    class FakeServer:
-        def annotation_queue_read(self, req):
-            if req.queue_id == "queue-profiler":
-                return SimpleNamespace(queue=SimpleNamespace(name="D20260528_Profiler"))
-            return SimpleNamespace(queue=SimpleNamespace(name="OtherQueue"))
-
-    feedback_items[1].feedback_type = "wandb.annotation.QualityReviewer"
-    feedback_items[1].queue_id = "queue-profiler"
-    client = SimpleNamespace(
-        get_feedback=lambda: feedback_items,
-        server=FakeServer(),
-        _project_id=lambda: "entity/project",
-    )
+    client = SimpleNamespace(get_feedback=lambda: feedback_items)
 
     events = ingest_feedback(tmp_path, client)
 
-    assert len(events) == 2
-    assert {event["target_prompt"] for event in events} == {"discovery", "profiler"}
-    assert {event["weave_call_id"] for event in events} == {"discovery-call", "profile-call"}
+    assert len(events) == 1
+    assert events[0]["target_prompt"] == "researcher"
+    assert events[0]["weave_call_id"] == "profile-call"
     notes = (tmp_path / "prompt_improvement_notes.md").read_text()
-    assert "`discovery.md`: 1" in notes
-    assert "`profiler.md`: 1" in notes
+    assert "`researcher.md`: 1" in notes
 
 
-def test_render_proposer_input_includes_feedback_and_current_prompts(tmp_path):
+def test_render_proposer_input_includes_feedback_and_current_prompt(tmp_path):
     from autoresearch_researcher.tools.improvement import (
         load_feedback_context,
         render_proposer_input,
@@ -188,46 +150,8 @@ def test_render_proposer_input_includes_feedback_and_current_prompts(tmp_path):
     assert "Day: 2026-05-28" in rendered
     assert "Human Feedback Events" in rendered
     assert "Curated list. Should be rejected." in rendered
-    assert "Current Prompt: discovery.md" in rendered
-    assert "Current Prompt: profiler.md" in rendered
-    assert "Current Prompt: writer.md" in rendered
-    assert "Seed profiler rules." in rendered
-
-
-def test_render_proposer_input_separates_discovery_and_profiler_feedback(tmp_path):
-    from autoresearch_researcher.tools.improvement import (
-        load_feedback_context,
-        render_proposer_input,
-    )
-
-    instructions_dir = tmp_path / "instructions"
-    _bootstrap_instructions(instructions_dir)
-    day_dir = tmp_path / "2026-05-28"
-    _write_feedback(
-        day_dir,
-        [
-            _targeted_event(
-                target="Discovery",
-                day=28,
-                note="Discovery should reject awesome-list URLs before profiling.",
-            ),
-            _targeted_event(
-                target="Profiler",
-                day=28,
-                note="Profiler should reject tools that only summarize papers.",
-            ),
-        ],
-    )
-
-    context = load_feedback_context(day_dir)
-    rendered = render_proposer_input(context, instructions_dir=instructions_dir)
-
-    assert "Discovery-targeted Feedback" in rendered
-    assert "Profiler-targeted Feedback" in rendered
-    assert "may only be used to propose edits to `discovery.md`" in rendered
-    assert "may only be used to propose edits to `profiler.md`" in rendered
-    assert "Target prompt: `discovery.md`" in rendered
-    assert "Target prompt: `profiler.md`" in rendered
+    assert "Current Prompt: researcher.md" in rendered
+    assert "Seed researcher rules." in rendered
 
 
 def test_render_proposer_input_handles_no_feedback(tmp_path):
@@ -247,12 +171,12 @@ def test_render_proposer_input_handles_no_feedback(tmp_path):
     assert "No feedback events were found." in rendered
 
 
-def test_render_applier_input_includes_plan_and_current_prompts(tmp_path):
+def test_render_applier_input_includes_plan_and_current_prompt(tmp_path):
     from autoresearch_researcher.tools.improvement import render_applier_input
 
     instructions_dir = tmp_path / "instructions"
     _bootstrap_instructions(instructions_dir)
-    plan_md = "# Prompt Improvement Plan\n\n## Proposed Changes: profiler.md\nReject curated lists."
+    plan_md = "# Prompt Improvement Plan\n\n## Proposed Changes: researcher.md\nReject curated lists."
 
     rendered = render_applier_input(
         plan_markdown=plan_md,
@@ -261,9 +185,7 @@ def test_render_applier_input_includes_plan_and_current_prompts(tmp_path):
 
     assert "Prompt Improvement Plan" in rendered
     assert "Reject curated lists." in rendered
-    assert "Seed discovery rules." in rendered
-    assert "Seed profiler rules." in rendered
-    assert "Seed writer rules." in rendered
+    assert "Seed researcher rules." in rendered
 
 
 def test_propose_prompt_improvements_runs_agent_and_returns_plan(tmp_path):
@@ -293,13 +215,14 @@ def test_propose_prompt_improvements_runs_agent_and_returns_plan(tmp_path):
     assert result["applies_code_changes"] is False
     assert result["feedback_event_count"] == 1
     assert result["plan_markdown"] == plan_markdown
-    assert result["proposal_markdown"] == plan_markdown
+    assert result["target_prompt_files"] == [
+        "src/autoresearch_researcher/instructions/researcher.md"
+    ]
     assert Path(result["plan_path"]).name == "prompt_improvement_plan.md"
     assert Path(result["plan_path"]).exists()
 
 
 def test_propose_prompt_improvements_errors_when_agent_skips_save(tmp_path):
-    """The proposer agent must call save_improvement_plan; otherwise we fail loudly."""
     from autoresearch_researcher.tools import improvement
 
     instructions_dir = tmp_path / "instructions"
@@ -308,12 +231,9 @@ def test_propose_prompt_improvements_errors_when_agent_skips_save(tmp_path):
     _write_feedback(day_dir, [_event(name="X", note="bad")])
 
     async def fake_runner(*, day_dir, instructions_dir, max_turns):
-        # Intentionally do not write a plan file.
         return day_dir / improvement.PLAN_FILENAME
 
     with patch.object(improvement, "_run_proposer_agent", side_effect=fake_runner):
-        # propose_prompt_improvements wraps asyncio.run on _run_proposer_agent,
-        # so the missing plan file surfaces as the underlying RuntimeError.
         try:
             improvement.propose_prompt_improvements(
                 day_dir, instructions_dir=instructions_dir
@@ -333,36 +253,20 @@ def test_apply_prompt_improvements_publishes_when_files_change(tmp_path):
     day_dir = tmp_path / "2026-05-28"
     day_dir.mkdir()
     plan_path = day_dir / improvement.PLAN_FILENAME
-    plan_path.write_text("# Plan\n\n## Proposed Changes: profiler.md\nReject curated lists.")
+    plan_path.write_text("# Plan\n\n## Proposed Changes: researcher.md\nReject curated lists.")
 
     async def fake_runner(*, day_dir, instructions_dir, max_turns):
-        (instructions_dir / "profiler.md").write_text("# Profiler\nReject curated lists.\n")
-        return plan_path, [instructions_dir / "profiler.md"]
+        (instructions_dir / "researcher.md").write_text("# Researcher\nReject curated lists.\n")
+        return plan_path, [instructions_dir / "researcher.md"]
 
     fake_versions = {
-        "discovery": InstructionPromptVersion(
-            agent_name="discovery",
-            object_name="autoresearch-discovery-instructions",
-            content="",
-            formatted_content="",
-            content_hash="h1",
-            ref_uri="weave:///d:v1",
-        ),
-        "profiler": InstructionPromptVersion(
-            agent_name="profiler",
-            object_name="autoresearch-profiler-instructions",
+        "researcher": InstructionPromptVersion(
+            agent_name="researcher",
+            object_name="autoresearch-researcher-instructions",
             content="",
             formatted_content="",
             content_hash="h2",
-            ref_uri="weave:///p:v2",
-        ),
-        "writer": InstructionPromptVersion(
-            agent_name="writer",
-            object_name="autoresearch-writer-instructions",
-            content="",
-            formatted_content="",
-            content_hash="h3",
-            ref_uri="weave:///w:v1",
+            ref_uri="weave:///r:v2",
         ),
     }
 
@@ -374,15 +278,10 @@ def test_apply_prompt_improvements_publishes_when_files_change(tmp_path):
 
     mock_publish.assert_called_once()
     assert result["prompt_only"] is True
-    assert result["applies_code_changes"] is False
-    assert result["changed_prompt_files"] == [str(instructions_dir / "profiler.md")]
+    assert result["changed_prompt_files"] == [str(instructions_dir / "researcher.md")]
     assert result["published"] is True
-    assert result["prompt_refs"] == {
-        "discovery": "weave:///d:v1",
-        "profiler": "weave:///p:v2",
-        "writer": "weave:///w:v1",
-    }
-    assert "weave:///p:v2" in result["apply_markdown"]
+    assert result["prompt_refs"] == {"researcher": "weave:///r:v2"}
+    assert "weave:///r:v2" in result["apply_markdown"]
     assert (day_dir / "prompt_improvement_applied.md").exists()
 
 
@@ -434,12 +333,12 @@ def test_render_apply_result_markdown_lists_changed_files(tmp_path):
     markdown = render_apply_result_markdown(
         day="2026-05-28",
         plan_path=tmp_path / "prompt_improvement_plan.md",
-        changed_paths=[tmp_path / "instructions" / "profiler.md"],
+        changed_paths=[tmp_path / "instructions" / "researcher.md"],
     )
 
     assert "Prompt Improvement Apply Result" in markdown
     assert "Python code changes: not applied" in markdown
-    assert "profiler.md" in markdown
+    assert "researcher.md" in markdown
 
 
 def test_improve_propose_cli_invokes_agent_and_writes_plan(tmp_path):

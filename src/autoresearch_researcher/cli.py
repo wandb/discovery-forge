@@ -31,6 +31,15 @@ DEFAULT_MAX_COST_USD = 20.0
 class SearchBackendOption(str, Enum):
     serper = "serper"
     perplexity = "perplexity"
+    openai = "openai"
+
+
+class RecencyOption(str, Enum):
+    day = "day"
+    week = "week"
+    month = "month"
+    year = "year"
+    all = "all"
 
 
 async def run_briefing(
@@ -40,6 +49,7 @@ async def run_briefing(
     max_cost_usd: float,
     dry_run: bool,
     search_backend: str,
+    recency: str | None = None,
 ) -> None:
     """Delegate to orchestrator.run_briefing."""
     from autoresearch_researcher.orchestrator import run_briefing as _run
@@ -50,6 +60,7 @@ async def run_briefing(
         max_cost_usd=max_cost_usd,
         dry_run=dry_run,
         search_backend=search_backend,
+        recency=recency,
     )
 
 
@@ -64,11 +75,17 @@ def run(
     search_backend: SearchBackendOption = typer.Option(
         SearchBackendOption(DEFAULT_SEARCH_BACKEND),
         "--search-backend",
-        help="Search backend for Discovery and Profiler",
+        help="Search backend for the ResearcherAgent",
+    ),
+    since: RecencyOption = typer.Option(
+        RecencyOption.month,
+        "--since",
+        help="Restrict search results to this recency window (use 'all' for no date filter)",
     ),
 ) -> None:
-    """Discover, profile, and write a daily briefing for experiment-automation tools."""
+    """Run the ResearcherAgent up to max_tools times and build the daily feed (items/* + manifest.json)."""
     day_dir = output_dir / day
+    recency = None if since == RecencyOption.all else since.value
 
     if day_dir.exists() and not rerun:
         typer.echo(f"ERROR: {day_dir} already exists. Use --rerun to overwrite.", err=True)
@@ -89,6 +106,7 @@ def run(
         "max_cost_usd": max_cost_usd,
         "dry_run": dry_run,
         "search_backend": search_backend.value,
+        "recency": recency,
     }
     metadata_path = day_dir / "run_metadata.json"
     metadata_path.write_text(json.dumps(metadata, indent=2))
@@ -112,6 +130,7 @@ def run(
                 max_cost_usd=max_cost_usd,
                 dry_run=dry_run,
                 search_backend=search_backend.value,
+                recency=recency,
             )
         )
     except Exception as e:
@@ -125,38 +144,6 @@ def run(
         existing["elapsed_seconds"] = round((t_end - t_start).total_seconds(), 2)
         metadata_path.write_text(json.dumps(existing, indent=2))
         typer.echo(f"Run complete. Output: {day_dir}")
-
-
-@app.command()
-def diff(
-    day: str = typer.Option(..., "--day", help="Run date identifier, e.g. 2026-05-28"),
-    output_dir: Path = typer.Option(DEFAULT_OUTPUT_DIR, help="Base output directory"),
-) -> None:
-    """Generate diff.md and feedback.md template from draft.md vs final.md."""
-    day_dir = output_dir / day
-    draft = day_dir / "draft.md"
-    final = day_dir / "final.md"
-
-    if not draft.exists():
-        typer.echo(f"ERROR: {draft} not found.", err=True)
-        raise typer.Exit(code=1)
-
-    if not final.exists():
-        typer.echo(f"ERROR: {final} not found. Write final.md first.", err=True)
-        raise typer.Exit(code=1)
-
-    from autoresearch_researcher.tools.diff import generate_diff, generate_feedback_template
-
-    diff_content = generate_diff(draft.read_text(), final.read_text())
-    (day_dir / "diff.md").write_text(diff_content)
-    typer.echo(f"diff.md written to {day_dir / 'diff.md'}")
-
-    feedback_path = day_dir / "feedback.md"
-    if not feedback_path.exists():
-        feedback_path.write_text(generate_feedback_template(day=day))
-        typer.echo(f"feedback.md template written to {feedback_path}")
-    else:
-        typer.echo(f"feedback.md already exists — not overwriting.")
 
 
 @feedback_app.command("ingest")
@@ -184,19 +171,19 @@ def feedback_ingest(
     typer.echo(f"Ingested {len(events)} feedback events into {day_dir / 'feedback_events.jsonl'}")
 
 
-@eval_app.command("run-profiler")
-def eval_run_profiler(
+@eval_app.command("run-researcher")
+def eval_run_researcher(
     dataset_path: Optional[Path] = typer.Option(None, "--dataset-path", help="Local JSONL dataset path"),
     dataset_ref: Optional[str] = typer.Option(None, "--dataset-ref", help="Weave Dataset ref URI"),
-    output_dir: Path = typer.Option(Path("eval_runs/profiler"), help="Directory for profiler eval artifacts"),
+    output_dir: Path = typer.Option(Path("eval_runs/researcher"), help="Directory for researcher eval artifacts"),
     search_backend: SearchBackendOption = typer.Option(
         SearchBackendOption(DEFAULT_SEARCH_BACKEND),
         "--search-backend",
-        help="Search backend for Profiler",
+        help="Search backend for the ResearcherAgent",
     ),
     limit: Optional[int] = typer.Option(None, "--limit", help="Optional row limit for smoke runs"),
 ) -> None:
-    """Run ProfilerAgent against a profiler evaluation dataset in Weave."""
+    """Run ResearcherAgent against a scope/profile evaluation dataset in Weave."""
     if (dataset_path is None) == (dataset_ref is None):
         typer.echo("ERROR: Provide exactly one of --dataset-path or --dataset-ref.", err=True)
         raise typer.Exit(code=1)
@@ -206,10 +193,10 @@ def eval_run_profiler(
 
     try:
         from autoresearch_researcher.orchestrator import init_observability
-        from autoresearch_researcher.tools.evaluation import run_profiler_evaluation
+        from autoresearch_researcher.tools.evaluation import run_researcher_evaluation
 
-        init_observability(day_id="profiler-eval")
-        result = run_profiler_evaluation(
+        init_observability(day_id="researcher-eval")
+        result = run_researcher_evaluation(
             dataset_path=dataset_path,
             dataset_ref=dataset_ref,
             output_dir=output_dir,
@@ -217,10 +204,10 @@ def eval_run_profiler(
             limit=limit,
         )
     except Exception as e:
-        typer.echo(f"Profiler evaluation failed: {e}", err=True)
+        typer.echo(f"Researcher evaluation failed: {e}", err=True)
         raise typer.Exit(code=2)
 
-    typer.echo("Profiler evaluation complete.")
+    typer.echo("Researcher evaluation complete.")
     typer.echo(str(result))
 
 

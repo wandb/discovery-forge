@@ -13,9 +13,7 @@ import weave
 INSTRUCTIONS_DIR = Path(__file__).parent.parent / "instructions"
 
 PROMPT_OBJECT_NAMES = {
-    "discovery": "autoresearch-discovery-instructions",
-    "profiler": "autoresearch-profiler-instructions",
-    "writer": "autoresearch-writer-instructions",
+    "researcher": "autoresearch-researcher-instructions",
 }
 
 
@@ -99,9 +97,11 @@ def prompt_contents(versions: dict[str, InstructionPromptVersion]) -> dict[str, 
 
 
 def format_instruction_content(agent_name: str, content: str, *, max_tools: int) -> str:
-    """Apply runtime variables after retrieving the registered prompt content."""
-    if agent_name == "discovery":
-        return content.replace("{max_tools}", str(max_tools))
+    """Apply runtime variables after retrieving the registered prompt content.
+
+    The single researcher prompt has no formatting variables; the per-run
+    exclusion list is passed at call time instead of being baked into the prompt.
+    """
     return content
 
 

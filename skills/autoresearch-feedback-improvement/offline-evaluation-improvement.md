@@ -1,10 +1,10 @@
-# Offline Profiler Evaluation Improvement
+# Offline Evaluation Improvement
 
-Use this workflow when improving ProfilerAgent behavior from a Weave Evaluation run rather than newly added annotations. The usual user input is a Weave evaluation link; treat that link as the primary evidence source.
+Use this workflow when improving ResearcherAgent behavior from a Weave Evaluation run rather than newly added annotations. The usual user input is a Weave evaluation link; treat that link as the primary evidence source.
 
-This workflow is currently **Profiler-only**. Do not add or run Discovery evaluation unless the user explicitly asks for a new Discovery evaluation design.
+The evaluation targets the ResearcherAgent's scope/profile decision. Do not add or run a separate discovery evaluation; the single agent does discovery + profiling in one run.
 
-The evaluation dataset, audit sidecar, and scorers are **read-only evidence** in this workflow. Do not change dataset rows, labels, dedup logic, scorer logic, or evaluation runner behavior. Improvements must target ProfilerAgent behavior only.
+The evaluation dataset, audit sidecar, and scorers are **read-only evidence** in this workflow. Do not change dataset rows, labels, dedup logic, scorer logic, or evaluation runner behavior. Improvements must target ResearcherAgent behavior only.
 
 ## 1. Start From The Evaluation Link
 
@@ -35,14 +35,7 @@ If the URL points to a child row, resolve its root/parent evaluation first, then
 
 ## 2. Understand The Read-Only Dataset Contract
 
-Default dataset:
-
-- Dataset object: `profiler-eval-dataset`
-- Current dataset ref: `daily_runs/weave-profiler-annotation-eval/profiler_eval_dataset_refs.json`
-- Local minimal dataset: `daily_runs/weave-profiler-annotation-eval/profiler_eval_dataset_minimal.jsonl`
-- Audit sidecar: `daily_runs/weave-profiler-annotation-eval/profiler_eval_dataset_audit.jsonl`
-
-The minimal profiler dataset should contain only scorer/model inputs:
+The minimal evaluation dataset should contain only scorer/model inputs:
 
 - `input_tool_name`
 - `input_candidate_url`
@@ -50,37 +43,34 @@ The minimal profiler dataset should contain only scorer/model inputs:
 - `expected_scope_status`
 - `expected_issue_category`
 
-Keep provenance out of the Weave evaluation dataset. Store it in the audit sidecar instead:
+Keep provenance out of the Weave evaluation dataset. Store it in an audit sidecar instead:
 
 - original annotation call IDs
 - feedback IDs
 - review notes
-- original profiler status/rejection reason
+- original scope status/rejection reason
 - dedupe provenance
 
-Do not edit these files during offline profiler improvement. If a row appears wrong, report it as a dataset-maintenance follow-up instead of changing the dataset.
+Do not edit these files during offline improvement. If a row appears wrong, report it as a dataset-maintenance follow-up instead of changing the dataset.
 
-## 3. Inspect Or Rerun The Profiler Evaluation
+## 3. Inspect Or Rerun The Researcher Evaluation
 
-If no evaluation link is provided, run the current profiler dataset:
+If no evaluation link is provided, run the evaluation dataset:
 
 ```bash
-uv run autoresearch-researcher eval run-profiler \
-  --dataset-ref "$(python - <<'PY'
-import json
-print(json.load(open('daily_runs/weave-profiler-annotation-eval/profiler_eval_dataset_refs.json'))['profiler-eval-dataset'])
-PY
-)" \
-  --output-dir eval_runs/profiler-<date> \
+uv run autoresearch-researcher eval run-researcher \
+  --dataset-path <dataset.jsonl> \
+  --output-dir eval_runs/researcher-<date> \
   --search-backend serper
 ```
+
+`--dataset-ref <weave-dataset-ref>` may be used instead of `--dataset-path` to reuse a published Weave dataset object.
 
 Evaluation code lives in `src/autoresearch_researcher/tools/evaluation.py`.
 
 Implementation constraints:
 
-- `eval run-profiler` must reuse the supplied Weave dataset object when `--dataset-ref` is provided.
-- Do not create throwaway dataset objects such as `profiler-eval-run-dataset`.
+- `eval run-researcher` must reuse the supplied Weave dataset object when `--dataset-ref` is provided.
 - Local JSONL evaluation may pass plain row lists to `weave.Evaluation`, but should not publish a new dataset unless explicitly requested.
 - Keep `weave.init()` centralized through the CLI/orchestrator path.
 - Do not modify `src/autoresearch_researcher/tools/evaluation.py` or scorer behavior in this workflow.
@@ -89,7 +79,7 @@ Implementation constraints:
 
 Primary scorer:
 
-- `scope_decision_scorer`: checks whether Profiler returned `accepted` or `rejected` as expected.
+- `scope_decision_scorer`: checks whether the agent returned `accepted` or `rejected` as expected.
 
 Secondary scorer:
 
@@ -108,9 +98,9 @@ When summarizing results, report:
 
 Failure interpretation rules:
 
-- If `expected_scope_status == rejected` and Profiler accepts, this is usually a profiler scope-policy issue.
-- If `expected_scope_status == accepted` and Profiler rejects due to missing metadata, keep scope verdict separate from metadata completeness.
-- If scope is correct but profile quality fails, improve ProfilerAgent metadata extraction/source behavior rather than changing scorer requirements.
+- If `expected_scope_status == rejected` and the agent accepts, this is usually a scope-policy issue.
+- If `expected_scope_status == accepted` and the agent rejects due to missing metadata, keep scope verdict separate from metadata completeness.
+- If scope is correct but profile quality fails, improve the agent's metadata extraction/source behavior rather than changing scorer requirements.
 - If the dataset row looks wrong, report it as a dataset review item. Do not change dataset/audit evidence in this workflow.
 
 ### Failure Investigation Checklist
@@ -121,7 +111,7 @@ For each failing row, capture:
 - expected labels: `expected_scope_status`, `expected_issue_category`
 - model output: observed `scope_status`, rejection reason, or saved profile fields
 - scorer outputs: which scorer failed and why
-- whether failure is due to Profiler behavior, dataset label, scorer logic, or flaky external search
+- whether failure is due to agent behavior, dataset label, scorer logic, or flaky external search
 - relevant audit sidecar row if provenance is needed
 
 Do not infer a different expected label from model output alone. The offline dataset is the regression contract for this workflow. Dataset/scorer issues should be reported, not fixed here.
@@ -135,28 +125,27 @@ Create a short plan before edits. Each item should include:
 - relevant scorer failure
 - audit-sidecar evidence when needed
 - target files
-- whether the fix is prompt-only or profiler-agent code
-- validation command, usually rerunning the same profiler evaluation
+- whether the fix is prompt-only or agent code
+- validation command, usually rerunning the same evaluation
 
-Offline profiler improvements may target only:
+Offline improvements may target only:
 
-- `src/autoresearch_researcher/instructions/profiler.md` for prompt/scope wording
-- `src/autoresearch_researcher/agents/profiler.py` only when prompt/scorer changes are insufficient
+- `src/autoresearch_researcher/instructions/researcher.md` for prompt/scope wording
+- `src/autoresearch_researcher/agents/researcher.py` only when prompt/scorer changes are insufficient
 
 Do not target:
 
 - `src/autoresearch_researcher/tools/evaluation.py`
-- local `eval/` dataset-generation utilities
-- `daily_runs/weave-profiler-annotation-eval/*.jsonl`
+- local dataset-generation utilities
 - Weave dataset versions or scorer definitions
 
 ## 6. Execute And Rerun
 
-For offline profiler work:
+For offline work:
 
-1. Apply the smallest ProfilerAgent prompt or agent-code change.
+1. Apply the smallest ResearcherAgent prompt or agent-code change.
 2. Run focused unit tests.
-3. Rerun the same `profiler-eval-dataset` evaluation.
+3. Rerun the same evaluation dataset.
 4. Compare before/after scorer summaries against the user-provided evaluation link.
 
 Do not replace the dataset or adjust scorers to make the score look better. If audit evidence shows a row is mislabeled, duplicated, or malformed, report it as a dataset-maintenance follow-up outside this workflow.
@@ -165,6 +154,6 @@ Do not replace the dataset or adjust scorers to make the score look better. If a
 
 Use the smallest meaningful validation:
 
-- `uv run pytest tests/unit/test_us4_profiler.py -v` for ProfilerAgent behavior changes
+- `uv run pytest tests/unit/test_researcher.py -v` for ResearcherAgent behavior changes
 - `uv run pytest tests/unit/test_profiler_evaluation.py -v` only to confirm the unchanged evaluation runner still works
-- `uv run autoresearch-researcher eval run-profiler --dataset-ref <profiler-eval-dataset-ref> --output-dir eval_runs/profiler-<date>` for behavior changes
+- `uv run autoresearch-researcher eval run-researcher --dataset-path <dataset.jsonl> --output-dir eval_runs/researcher-<date>` for behavior changes

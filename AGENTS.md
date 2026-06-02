@@ -22,13 +22,13 @@ For feedback-driven work, also read `skills/autoresearch-feedback-improvement/SK
 - Package manager: **`uv`** (do not use pip)
 - Framework: `openai-agents` (OpenAI Agents SDK)
 - **Observability: `weave` (W&B Weave) — auto-integrated via the OpenAI Agents SDK trace processor**
-- Models: `gpt-5.4-mini` for all three agents (Discovery, Profiler, Writer)
-- Search: Serper by default; Perplexity `sonar-pro` is retained as `--search-backend perplexity`
+- Models: `gpt-5.4-mini` for the `ResearcherAgent` and the prompt-improvement proposer/applier
+- Search: Serper by default; Perplexity `sonar-pro` via `--search-backend perplexity`; OpenAI hosted `WebSearchTool` via `--search-backend openai` (no extra search key)
 - Tests: `pytest`, `pytest-asyncio`
 - Env loading: `python-dotenv` from `.env`
   - `OPENAI_API_KEY` (required)
-  - `SERPER_API_KEY` (required for default Discovery and Profiler search)
-  - `PERPLEXITY_API_KEY` (required only for `--search-backend perplexity`)
+ - `SERPER_API_KEY` (required for the default Serper search; not needed with `--search-backend openai`)
+ - `PERPLEXITY_API_KEY` (required only for `--search-backend perplexity`)
   - `WANDB_API_KEY` (required for Weave tracing)
   - `GITHUB_TOKEN` (optional, raises GitHub API rate limit)
 
@@ -49,18 +49,19 @@ uv run pytest tests/ --ignore=tests/e2e
 uv run pytest -m expensive tests/e2e/
 
 # Run a single test file or test
-uv run pytest tests/unit/test_us4_profiler.py -v
-uv run pytest tests/unit/test_us4_profiler.py::test_profiler_scope_filter_deep_research_tool_is_rejected -v
+uv run pytest tests/unit/test_researcher.py -v
+uv run pytest tests/unit/test_researcher.py::test_scope_filter_deep_research_tool_is_rejected -v
 
 # Add a new dependency
 uv add <package>
 
 # Run the CLI
-uv run autoresearch-researcher run --day 2026-05-19 [--max-tools N --max-cost-usd N --dry-run --rerun]
-uv run autoresearch-researcher diff --day 2026-05-19
+uv run autoresearch-researcher run --day 2026-05-19 [--max-tools N --max-cost-usd N --dry-run --rerun --search-backend serper|perplexity|openai --since day|week|month|year|all]
 
-# One-time migration: import existing per-day tool profiles into the global registry
-uv run python scripts/migrate_to_registry.py daily_runs/<week_dir> <day_id>
+# Ingest Weave annotations, then improve the prompt (prompt-only loop)
+uv run autoresearch-researcher feedback ingest --day 2026-05-19
+uv run autoresearch-researcher improve propose --day 2026-05-19
+uv run autoresearch-researcher improve apply --day 2026-05-19
 ```
 
 ---
@@ -71,29 +72,30 @@ uv run python scripts/migrate_to_registry.py daily_runs/<week_dir> <day_id>
 src/autoresearch_researcher/
 ├── __init__.py
 ├── cli.py                  # entrypoint (Typer)
-├── orchestrator.py         # flow control + cost budget + tracing
+├── orchestrator.py         # single-agent loop + cost budget + tracing
 ├── agents/
 │   ├── __init__.py
-│   ├── discovery.py
-│   ├── profiler.py
-│   └── writer.py
+│   ├── researcher.py       # the single discover+profile ResearcherAgent
+│   └── improver.py         # prompt-improvement proposer + applier
 ├── instructions/           # agent prompts (kept separate from code)
-│   ├── discovery.md
-│   ├── profiler.md
-│   └── writer.md
-├── tools/                  # function_tool definitions
+│   ├── researcher.md
+│   ├── prompt_proposer.md
+│   └── prompt_applier.md
+├── tools/                  # function_tool definitions + helpers
 │   ├── __init__.py
-│   ├── persistence.py      # save_candidate_tool, save_tool_profile, save_draft, ...
+│   ├── persistence.py      # save_tool_profile, save_source, load_sources
+│   ├── profiles.py         # load_tool_profiles_from_dir (YAML front-matter)
 │   ├── github.py           # fetch_github_metadata
-│   ├── search.py           # perplexity_search
-│   ├── citations.py        # SourceRegistry + verify_citations
+│   ├── search.py           # serper / perplexity backends (openai uses WebSearchTool)
+│   ├── citations.py        # SourceRegistry + verify_citations (retained, not yet wired in)
 │   ├── registry.py         # ToolRegistry (global accumulator)
-│   ├── feedback.py         # ingest Weave feedback by profile call id
-│   ├── feed.py             # Agentforge manifest/items/raw export
-│   └── diff.py             # draft vs final diff
+│   ├── feedback.py         # ingest Weave feedback by research call id
+│   ├── improvement.py      # propose/apply prompt-improvement ops
+│   ├── prompts.py          # Weave StringPrompt versioning for researcher.md
+│   ├── evaluation.py       # Weave Evaluation for the researcher scope/profile decision
+│   └── feed.py             # Agentforge manifest/items/raw export
 └── schemas/                # pydantic models
     ├── __init__.py
-    ├── candidate.py
     ├── tool_profile.py
     ├── sources.py
     └── registry.py
@@ -116,16 +118,23 @@ daily_runs/                # output (.gitignore)
 ### Defining an Agent
 
 ```python
-from agents import Agent, function_tool
+from agents import Agent, WebSearchTool, function_tool
 
-def build_profiler_agent() -> Agent:
+def build_researcher_agent(search_backend="serper") -> Agent:
+    # search tool depends on the backend: WebSearchTool for "openai",
+    # else a function_tool wrapping the serper/perplexity backend.
+    search_tool = WebSearchTool() if search_backend == "openai" else search_web
     return Agent(
-        name="ProfilerAgent",
-        instructions=load_instructions("profiler"),
+        name="ResearcherAgent",
+        instructions=load_instructions("researcher"),
         tools=[
-            search_web,                # configured search backend function_tool
-            fetch_github_metadata,
-            save_tool_profile,
+            search_tool,
+            is_known_tool,
+            fetch_github_metadata_tool,
+            save_source_tool,
+            save_tool_profile_tool,
+            save_rejected_profile_tool,
+            report_no_new_tool,
         ],
         model="gpt-5.4-mini",
     )
@@ -182,50 +191,40 @@ def init_observability(day_id: str):
     weave.init("wandb-smle/autoresearch-researcher")
     set_trace_processors([AutoresearchWeaveTracingProcessor()])
 
-# Tag each daily run and per-tool profile call via attributes
+# Tag each per-tool research run via attributes
 import weave
 
 async def run_briefing(day_id: str):
-    with weave.attributes({"day": day_id, "stage": "discovery"}):
-        await Runner.run(
-            discovery_agent,
-            ...,
-            run_config=RunConfig(
-                workflow_name="stage1_discovery",
-                group_id=run_id,
-                trace_metadata={"day": day_id, "run_id": run_id, "stage": "discovery"},
-            ),
-        )
-    for candidate in candidates:
-        await profile_tool_candidate(candidate, day=day_id, run_id=run_id, ...)
-    with weave.attributes({"day": day_id, "stage": "writing"}):
-        await Runner.run(
-            writer_agent,
-            ...,
-            run_config=RunConfig(
-                workflow_name="stage3_writer",
-                group_id=run_id,
-                trace_metadata={"day": day_id, "run_id": run_id, "stage": "writing"},
-            ),
-        )
+    for i in range(max_tools):
+        with weave.attributes({"day": day_id, "stage": "research", "iteration": i + 1}):
+            await Runner.run(
+                researcher_agent,
+                ...,
+                run_config=RunConfig(
+                    workflow_name=f"stage_research_{i + 1}",
+                    group_id=run_id,
+                    trace_metadata={"day": day_id, "run_id": run_id, "stage": "research"},
+                ),
+            )
+    # after the loop: build_feed_output(...) -> items/* + manifest.json
 ```
 
-`profile_tool_candidate` is an orchestrator helper, not a displayed Weave op. The displayed review unit is the named Agents SDK trace `stage2_profile_{slug}`. It is called once per candidate and linked from `_profile_runs.jsonl` by `weave_call_id`, `agent_trace_id`, `workflow_name`, `run_id`, `slug`, `status`, and the profiler prompt hash. Do not add a separate `daily_run` trace unless it carries real diagnostic detail; the daily summary belongs in `run_metadata.json`.
+The displayed review unit is the named Agents SDK trace `stage_research_{i}` — one run per tool. Each is linked from `_profile_runs.jsonl` by `weave_call_id`, `agent_trace_id`, `workflow_name`, `run_id`, `slug`, `status`, and the researcher prompt hash. Do not add a separate `daily_run` trace unless it carries real diagnostic detail; the daily summary belongs in `run_metadata.json`.
 
-Always pass a named `RunConfig` to `Runner.run()` so Weave shows `stage1_discovery`, `stage2_profile_{slug}`, or `stage3_writer` instead of the SDK default `Agent workflow`. `init_observability()` uses `AutoresearchWeaveTracingProcessor`, which records the Weave call ID for each Agents trace and hides SDK task/turn spans while re-parenting their child tool calls to the nearest visible agent call. Stage 2 should read as `stage2_profile_{slug} → ProfilerAgent → openai.responses.create/search_web/save_*` instead of `profile_tool_candidate → Agent workflow → Unknown`.
+Always pass a named `RunConfig` to `Runner.run()` so Weave shows `stage_research_{i}` instead of the SDK default `Agent workflow`. `init_observability()` uses `AutoresearchWeaveTracingProcessor`, which records the Weave call ID for each Agents trace and hides SDK task/turn spans while re-parenting their child tool calls to the nearest visible agent call. A run should read as `stage_research_{i} → ResearcherAgent → openai.responses.create/search_web/save_*`.
 
-DiscoveryAgent's visible output should be a reviewer-friendly Markdown table built from `save_candidate_tool` / `save_rejected_candidate_tool` calls. Keep fields concise: name, representative URL, category, release/first-seen if known, and why it was selected or rejected.
+The ResearcherAgent's visible output is a reviewer-friendly profile review (accepted profile or rejection), built from `save_tool_profile_tool` / `save_rejected_profile_tool` calls.
 
 Feedback-driven improvement is a two-stage AI loop and is **prompt-only**. Neither stage may modify Python code, schemas, registry, orchestrator, CLI, or deployment files.
 
-- `improve propose` runs `PromptImprovementProposerAgent` (`instructions/prompt_proposer.md`). Inputs: every free-text human feedback event in `feedback_events.jsonl` plus the full current contents of `discovery.md`, `profiler.md`, `writer.md`. Tool: `save_improvement_plan(content)`. Output: `prompt_improvement_plan.md` — a concrete plan with per-agent failure modes, exact proposed edits, and diff snippets. Items needing Python changes go under `## Out of scope (code change required)`.
-- `improve apply` runs `PromptImprovementApplierAgent` (`instructions/prompt_applier.md`). Inputs: `prompt_improvement_plan.md` and current instruction contents. Tools: `update_discovery_instructions`, `update_profiler_instructions`, `update_writer_instructions`, each of which overwrites one instruction file with a full new Markdown body. The agent only calls the tools whose plan sections actually propose changes. A summary is written to `prompt_improvement_applied.md`. Whenever the applier actually changes a file, `improve apply` also calls `publish_instruction_prompts` so the new content becomes a Weave `StringPrompt` version in the same run; the resulting `prompt_refs` are returned in the trace output. This pipeline has no manual git-diff review step, so publishing is unconditional.
+- `improve propose` runs `PromptImprovementProposerAgent` (`instructions/prompt_proposer.md`). Inputs: every free-text human feedback event in `feedback_events.jsonl` plus the full current contents of `researcher.md`. Tool: `save_improvement_plan(content)`. Output: `prompt_improvement_plan.md` — a concrete plan with failure modes, exact proposed edits, and diff snippets. Items needing Python changes go under `## Out of scope (code change required)`.
+- `improve apply` runs `PromptImprovementApplierAgent` (`instructions/prompt_applier.md`). Inputs: `prompt_improvement_plan.md` and the current `researcher.md`. Tool: `update_researcher_instructions`, which overwrites the instruction file with a full new Markdown body, and only if the plan proposes a change. A summary is written to `prompt_improvement_applied.md`. Whenever the applier actually changes the file, `improve apply` also calls `publish_instruction_prompts` so the new content becomes a Weave `StringPrompt` version in the same run; the resulting `prompt_refs` are returned in the trace output. This pipeline has no manual git-diff review step, so publishing is unconditional.
 
-On every non-dry run, publish the three instruction files as Weave `StringPrompt` objects and construct agents from the registered prompt content. Record prompt hashes and Weave prompt refs in `run_metadata.json` and trace metadata.
+On every non-dry run, publish the `researcher.md` instruction file as a Weave `StringPrompt` object and construct the agent from the registered prompt content. Record prompt hashes and Weave prompt refs in `run_metadata.json` and trace metadata.
 
 Trace both improvement steps. `improve propose` must call the `improve_propose` Weave op and return the plan Markdown in the call output. `improve apply` must call the `improve_apply` Weave op and return changed prompt file paths plus an `apply_markdown` summary in the call output.
 
-Stage root outputs must be reviewer-friendly for Weave Annotation Queues. `stage1_discovery` should expose `review_markdown` plus candidate names/URLs. `stage2_profile_{slug}` should expose `profile_review_markdown`, `verdict`, key metadata, source IDs, and prompt refs. `stage3_writer` should expose `writer_review_markdown`, `draft_markdown`, `comparison_table_markdown`, paths, tool count, and prompt refs.
+Stage root outputs must be reviewer-friendly for Weave Annotation Queues. `stage_research_{i}` should expose `profile_review_markdown`, `verdict`, key metadata, source IDs, and prompt refs. Day-scoped annotations use the queue name `D{YYYYMMDD}_Research` and route to `researcher.md`.
 
 **Tracing your own functions**: decorate plain functions with `@weave.op` to include them in traces.
 ```python
@@ -242,11 +241,12 @@ def verify_citations(report: str, sources: list[Source]) -> list[str]:
 
 ## Search backend constraints
 
-- DiscoveryAgent and ProfilerAgent both use the `search_web` function_tool, which wraps the configured backend from `tools/search.py`.
-- Default backend is **Serper** (`SERPER_API_KEY`). This intentionally exposes rawer search-result quality for feedback-loop demos.
+- The ResearcherAgent's search tool is chosen by backend in `build_researcher_agent`.
+- Default backend is **Serper** (`SERPER_API_KEY`), wrapped as the `search_web` function_tool. This intentionally exposes rawer search-result quality for the annotation/feedback demo.
 - Perplexity `sonar-pro` remains available via `--search-backend perplexity` (`PERPLEXITY_API_KEY`) for A/B comparisons.
+- `--search-backend openai` uses the OpenAI built-in **`WebSearchTool`** (hosted, server-side). It needs only `OPENAI_API_KEY` (no Serper/Perplexity key) and requires a Responses-API model (gpt-4o / gpt-5 family). Useful for a keys-minimal hands-on run, but results are more synthesized, so there is less rawness for reviewers to annotate.
+- `--since {day|week|month|year|all}` (default `month`) sets a recency window via `search_web_query(..., recency=...)`: `serper` maps it to `tbs=qdr:<x>`, `perplexity` to `search_recency_filter`. The `openai` backend has no date filter, so recency only appears as a prompt hint. `all` disables the filter.
 - Do not add automatic fallback between backends. If a selected backend is missing credentials or fails, return an explicit error string.
-- The OpenAI built-in `WebSearchTool` is **not** used. If you need to add it back for any reason, remember it requires Responses-API models (gpt-4o family, gpt-5 family).
 
 ---
 
@@ -279,16 +279,16 @@ async def test_profiler_filters_out_deep_research():
 ```python
 @pytest.mark.expensive
 async def test_e2e_smoke_run(tmp_path):
-    result = await run_weekly_briefing(
+    await run_briefing(
         day="2026-05-29-test",
         max_tools=3,
         max_cost_usd=2.0,
         output_dir=tmp_path,
+        dry_run=True,
     )
-    assert (tmp_path / "draft.md").exists()
-    assert (tmp_path / "comparison_table.md").exists()
-    tools_dir = tmp_path / "tools"
-    assert len(list(tools_dir.glob("*.md"))) >= 3
+    assert (tmp_path / "manifest.json").exists()
+    items_dir = tmp_path / "items"
+    assert len(list(items_dir.glob("*.json"))) >= 3
 ```
 
 ---
@@ -302,11 +302,17 @@ Why:
 2. v2 feedback loop only edits these files
 3. Version history of how prompts evolved
 
-`load_instructions("profiler")` reads the file and returns a string.
+`load_instructions("researcher")` reads the file and returns a string.
 
 ---
 
-## Citation integrity (US6)
+## Citation integrity (US6 — retained, not yet wired in)
+
+`tools/citations.py` (`SourceRegistry`, `verify_citations`) and `Source` are kept for
+future use (e.g. attaching per-tool sources to feed items). The single-agent pipeline
+no longer produces a draft to verify, and `save_source_tool` is currently a stub, so
+nothing in the runtime path calls these yet. Do not delete without removing the matching
+tests in `tests/unit/test_us6_citations.py`.
 
 ```python
 # schemas/sources.py
@@ -317,7 +323,7 @@ class Source(BaseModel):
     fetched_at: datetime
     used_in: list[str]  # tool slugs
 
-# WriterAgent output verification
+# Citation verification helper (report vs known sources)
 import re
 def verify_citations(report: str, sources: list[Source]) -> list[str]:
     cited_ids = {int(m) for m in re.findall(r'\[\^(\d+)\]', report)}
@@ -349,13 +355,13 @@ def verify_citations(report: str, sources: list[Source]) -> list[str]:
 ## Hard rules (the things Ralph keeps breaking)
 
 - ❌ **Do not hardcode seed tool names** ("AI Scientist", "Agent Laboratory", etc.).
-  → DiscoveryAgent must find them via search. Only category definitions go in instructions.
+  → The ResearcherAgent must find them via search. Only category definitions go in instructions.
 - ❌ **Do not use pip**. Always `uv add`, `uv run`, `uv sync`.
 - ❌ Do not expose API keys in code, tests, comments, or git.
 - ❌ Do not omit `--max-cost-usd` in E2E tests.
-- ❌ Do not bypass ProfilerAgent's scope filter (deep-research tools quietly slipping in is the most common failure).
+- ❌ Do not bypass the ResearcherAgent's scope filter (deep-research / curated-list tools quietly slipping in is the most common failure).
 - ❌ Do not hardcode an Agent's instructions in code. Always load from `instructions/*.md`.
-- ❌ Do not call the built-in `WebSearchTool` on a plain ChatCompletions model (Responses API only). We don't use it anymore — the configured `search_web` backend replaces it.
+- ❌ Do not call the built-in `WebSearchTool` on a plain ChatCompletions model (Responses API only). It is only wired in for `--search-backend openai`, which assumes a Responses-API model (gpt-4o / gpt-5 family).
 - ❌ **Do not call `weave.init()` more than once per process** — exactly one call from the orchestrator entrypoint.
 - ❌ **Use `set_trace_processors([AutoresearchWeaveTracingProcessor()])` to *replace*, not add** — never use `add_trace_processor`.
 - ❌ Do not call real `weave.init` from unit tests — mock it via the fixture for token savings and isolation.

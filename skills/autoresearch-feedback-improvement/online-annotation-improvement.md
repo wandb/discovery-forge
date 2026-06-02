@@ -12,7 +12,7 @@ Default project:
 
 - Entity: `wandb-smle`
 - Project: `autoresearch-researcher`
-- Important annotation types: `QualityReviewer`, `QualitySelector`, day-scoped discovery/profiler annotations, and older profiler scorer annotations when relevant.
+- Important annotation types: `QualityReviewer`, `QualitySelector`, day-scoped research annotations (`D{YYYYMMDD}_Research`), and older scorer annotations when relevant.
 
 ### Date Scope
 
@@ -54,7 +54,7 @@ Before planning changes, summarize:
 
 - feedback count inspected
 - target day or run ID
-- affected stages: `discovery`, `profiling`, `writing`, `improve`
+- affected stages: `research`, `improve`
 - repeated failure modes
 - representative call IDs or trace names
 - whether the evidence points to prompt changes, code changes, or both
@@ -71,11 +71,10 @@ Common failure modes:
 
 Create an improvement plan before editing files. Classify each item:
 
-- `prompt-only`: edits only `src/autoresearch_researcher/instructions/*.md`
+- `prompt-only`: edits only `src/autoresearch_researcher/instructions/researcher.md`
 - `schema-review-output`: changes schemas, saved rejected profiles, or Weave review markdown
 - `registry-dedup`: changes URL normalization, alias handling, or known-tool filtering
-- `discovery-policy`: changes Discovery search, candidate acceptance, or rejected candidate handling
-- `profiler-policy`: changes Profiler scope decisions, rejection categories, or metadata handling
+- `researcher-policy`: changes the ResearcherAgent's search, scope decisions, rejection handling, or metadata extraction
 - `manual-review`: creates a review queue item rather than encoding uncertain behavior
 
 For each planned item, include:

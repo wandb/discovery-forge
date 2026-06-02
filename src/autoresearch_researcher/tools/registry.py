@@ -121,7 +121,7 @@ class ToolRegistry:
 
     def get_all_profiles(self) -> list[dict]:
         """Return all profile front-matter dicts from profiles/*.md."""
-        from autoresearch_researcher.agents.writer import load_tool_profiles_from_dir
+        from autoresearch_researcher.tools.profiles import load_tool_profiles_from_dir
         return load_tool_profiles_from_dir(self.profiles_dir)
 
     def _rewrite_tools_jsonl(self) -> None:

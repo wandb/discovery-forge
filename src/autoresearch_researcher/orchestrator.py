@@ -1,6 +1,12 @@
-"""Orchestrator: flow control, cost tracking, and Weave tracing setup."""
+"""Orchestrator: flow control, cost tracking, and Weave tracing setup.
 
-import hashlib
+The pipeline is a single ResearcherAgent run sequentially up to ``max_tools``
+times. Each run finds one experiment-automation tool not yet covered, profiles
+it, and saves a canonical profile (or rejects it). The reviewable trace unit is
+``stage_research_{i}`` -> ``ResearcherAgent``. After the loop, ``build_feed_output``
+turns the saved profiles into ``items/*`` + ``manifest.json``.
+"""
+
 import json
 import re
 import shutil
@@ -16,7 +22,7 @@ from weave.integrations.openai_agents import openai_agents as weave_openai_agent
 from weave.integrations.openai_agents.openai_agents import WeaveTracingProcessor
 from weave.trace.context.weave_client_context import get_weave_client
 
-from autoresearch_researcher.tools.search import DEFAULT_SEARCH_BACKEND, SearchBackend
+from autoresearch_researcher.tools.search import DEFAULT_SEARCH_BACKEND, RecencyWindow, SearchBackend
 
 
 _AGENT_TRACE_CALLS: dict[str, tuple[str | None, str | None]] = {}
@@ -71,17 +77,13 @@ def patch_weave_agent_span_names() -> None:
 
 
 class AutoresearchWeaveTracingProcessor(WeaveTracingProcessor):
-    """Weave processor tuned for readable autoresearch agent traces."""
+    """Weave processor tuned for readable single-agent research traces."""
 
     def __init__(self) -> None:
         super().__init__()
         self._hidden_span_parent_calls = {}
-        self._discovery_candidates: dict[str, list[dict[str, Any]]] = {}
-        self._discovery_rejections: dict[str, list[dict[str, Any]]] = {}
-        self._profiler_profiles: dict[str, dict[str, Any]] = {}
-        self._profiler_rejections: dict[str, dict[str, Any]] = {}
-        self._writer_drafts: dict[str, str] = {}
-        self._writer_tables: dict[str, str] = {}
+        self._accepted_profiles: dict[str, dict[str, Any]] = {}
+        self._rejected_profiles: dict[str, dict[str, Any]] = {}
 
     def on_trace_start(self, trace) -> None:
         super().on_trace_start(trace)
@@ -115,12 +117,8 @@ class AutoresearchWeaveTracingProcessor(WeaveTracingProcessor):
         self._trace_calls.pop(tid, None)
         self._trace_data.pop(tid, None)
         self._ended_traces.discard(tid)
-        self._discovery_candidates.pop(tid, None)
-        self._discovery_rejections.pop(tid, None)
-        self._profiler_profiles.pop(tid, None)
-        self._profiler_rejections.pop(tid, None)
-        self._writer_drafts.pop(tid, None)
-        self._writer_tables.pop(tid, None)
+        self._accepted_profiles.pop(tid, None)
+        self._rejected_profiles.pop(tid, None)
 
     def _get_parent_call(self, span):
         parent_span_id = getattr(span, "parent_id", None)
@@ -160,42 +158,21 @@ class AutoresearchWeaveTracingProcessor(WeaveTracingProcessor):
 
     def _agent_log_data(self, span):
         data = super()._agent_log_data(span)
-        if getattr(span.span_data, "name", None) == "DiscoveryAgent":
-            candidates = self._discovery_candidates.get(span.trace_id, [])
-            rejections = self._discovery_rejections.get(span.trace_id, [])
-            data["outputs"] = {
-                **discovery_review_output(candidates, rejections),
-            }
-        elif getattr(span.span_data, "name", None) == "ProfilerAgent":
-            data["outputs"] = self._profile_review_output_for_trace(span.trace_id)
-        elif getattr(span.span_data, "name", None) == "WriterAgent":
-            data["outputs"] = self._writer_review_output_for_trace(span.trace_id)
+        if getattr(span.span_data, "name", None) == "ResearcherAgent":
+            data["outputs"] = self._research_review_output_for_trace(span.trace_id)
         return data
 
     def _review_output_for_trace(self, trace_id: str, trace_name: str) -> dict[str, Any]:
-        if trace_name == "stage1_discovery":
-            return discovery_review_output(
-                self._discovery_candidates.get(trace_id, []),
-                self._discovery_rejections.get(trace_id, []),
-            )
-        if trace_name.startswith("stage2_profile_"):
-            return self._profile_review_output_for_trace(trace_id)
-        if trace_name == "stage3_writer":
-            return self._writer_review_output_for_trace(trace_id)
+        if trace_name and trace_name.startswith("stage_research_"):
+            return self._research_review_output_for_trace(trace_id)
         return {}
 
-    def _profile_review_output_for_trace(self, trace_id: str) -> dict[str, Any]:
-        if trace_id in self._profiler_profiles:
-            return profile_review_output(self._profiler_profiles[trace_id], status="accepted")
-        if trace_id in self._profiler_rejections:
-            return profile_review_output(self._profiler_rejections[trace_id], status="rejected")
+    def _research_review_output_for_trace(self, trace_id: str) -> dict[str, Any]:
+        if trace_id in self._accepted_profiles:
+            return profile_review_output(self._accepted_profiles[trace_id], status="accepted")
+        if trace_id in self._rejected_profiles:
+            return profile_review_output(self._rejected_profiles[trace_id], status="rejected")
         return profile_review_output({}, status="unknown")
-
-    def _writer_review_output_for_trace(self, trace_id: str) -> dict[str, Any]:
-        return writer_review_output(
-            draft_markdown=self._writer_drafts.get(trace_id, ""),
-            comparison_table_markdown=self._writer_tables.get(trace_id, ""),
-        )
 
     def _collect_review_function_call(self, span) -> None:
         tool_name = getattr(span.span_data, "name", "")
@@ -204,34 +181,10 @@ class AutoresearchWeaveTracingProcessor(WeaveTracingProcessor):
             return
 
         trace_id = span.trace_id
-        if tool_name == "save_candidate_tool":
-            self._discovery_candidates.setdefault(trace_id, []).append(payload)
-        elif tool_name == "save_rejected_candidate_tool":
-            self._discovery_rejections.setdefault(trace_id, []).append(payload)
-        elif tool_name == "save_tool_profile_tool":
-            self._profiler_profiles[trace_id] = payload
+        if tool_name == "save_tool_profile_tool":
+            self._accepted_profiles[trace_id] = payload
         elif tool_name == "save_rejected_profile_tool":
-            self._profiler_rejections[trace_id] = payload
-        elif tool_name == "save_draft_tool":
-            self._writer_drafts[trace_id] = str(payload.get("content", ""))
-        elif tool_name == "save_comparison_table_tool":
-            self._writer_tables[trace_id] = str(payload.get("content", ""))
-
-    def _collect_discovery_function_call(self, span) -> None:
-        # Kept for backwards compatibility with older tests/callers.
-        tool_name = getattr(span.span_data, "name", "")
-        if tool_name not in {"save_candidate_tool", "save_rejected_candidate_tool"}:
-            return
-
-        payload = parse_tool_input(getattr(span.span_data, "input", None))
-        if not payload:
-            return
-
-        trace_id = span.trace_id
-        if tool_name == "save_candidate_tool":
-            self._discovery_candidates.setdefault(trace_id, []).append(payload)
-        else:
-            self._discovery_rejections.setdefault(trace_id, []).append(payload)
+            self._rejected_profiles[trace_id] = payload
 
 
 def get_agent_trace_call_metadata(trace_id: str) -> tuple[str | None, str | None]:
@@ -251,13 +204,6 @@ def create_run_id(day: str) -> str:
     """Return a stable-looking unique ID for linking daily and per-tool traces."""
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     return f"{day}-{stamp}-{uuid4().hex[:8]}"
-
-
-def prompt_hash(agent_name: str) -> str:
-    """Hash an instruction file so traces can be tied to prompt versions."""
-    from autoresearch_researcher.agents.discovery import load_instructions
-
-    return hashlib.sha256(load_instructions(agent_name).encode("utf-8")).hexdigest()[:12]
 
 
 def ensure_run_metadata(
@@ -345,84 +291,8 @@ def _trace_metadata(trace) -> dict[str, Any]:
     return metadata if isinstance(metadata, dict) else {}
 
 
-def discovery_review_output(
-    candidates: list[dict[str, Any]],
-    rejections: list[dict[str, Any]] | None = None,
-) -> dict[str, Any]:
-    """Return Annotation Queue-friendly Discovery output fields."""
-    rejections = rejections or []
-    return {
-        "review_markdown": render_discovery_review_markdown(candidates, rejections),
-        "candidate_count": len(candidates),
-        "rejected_count": len(rejections),
-        "candidate_names": [item.get("name") for item in candidates],
-        "candidate_urls": [item.get("url") for item in candidates],
-        "rejected_names": [item.get("name") for item in rejections],
-    }
-
-
-def render_discovery_review_markdown(
-    candidates: list[dict[str, Any]],
-    rejections: list[dict[str, Any]] | None = None,
-) -> str:
-    """Render DiscoveryAgent output as a reviewer-friendly Markdown table."""
-    rejections = rejections or []
-    lines = [
-        "# Discovery Results",
-        "",
-        f"Accepted candidates: {len(candidates)}",
-        f"Rejected candidates: {len(rejections)}",
-        "",
-    ]
-
-    if candidates:
-        lines.extend([
-            "## Candidate Tools",
-            "",
-            "| Name | Representative URL | Category | Release / First Seen | Why Candidate |",
-            "|---|---|---|---|---|",
-        ])
-        for item in candidates:
-            lines.append(
-                "| "
-                + " | ".join([
-                    _md_cell(item.get("name")),
-                    _md_cell(item.get("url")),
-                    _md_cell(item.get("category")),
-                    _md_cell(item.get("release_date") or item.get("first_seen") or "unknown"),
-                    _md_cell(item.get("description")),
-                ])
-                + " |"
-            )
-        lines.append("")
-    else:
-        lines.extend(["No accepted candidates were saved.", ""])
-
-    if rejections:
-        lines.extend([
-            "## Rejected During Discovery",
-            "",
-            "| Name | URL | Category | Reason |",
-            "|---|---|---|---|",
-        ])
-        for item in rejections:
-            lines.append(
-                "| "
-                + " | ".join([
-                    _md_cell(item.get("name")),
-                    _md_cell(item.get("url")),
-                    _md_cell(item.get("category")),
-                    _md_cell(item.get("rejection_reason")),
-                ])
-                + " |"
-            )
-        lines.append("")
-
-    return "\n".join(lines)
-
-
 def profile_review_output(profile: dict[str, Any], *, status: str) -> dict[str, Any]:
-    """Return Annotation Queue-friendly Profiler output fields."""
+    """Return Annotation Queue-friendly research output fields."""
     from autoresearch_researcher.tools.feed import feed_metadata_for_profile
 
     slug = profile.get("slug") or "unknown"
@@ -448,7 +318,7 @@ def profile_review_output(profile: dict[str, Any], *, status: str) -> dict[str, 
         "key_limitations": profile.get("key_limitations"),
         "source_ids": profile.get("source_ids"),
         "profile_path": f"daily_runs/_registry/profiles/{slug}.md" if status == "accepted" else None,
-        "prompt_ref": profile.get("profiler_prompt_ref"),
+        "prompt_ref": profile.get("researcher_prompt_ref"),
     }
     if status == "accepted":
         output.update(feed_metadata_for_profile(profile))
@@ -465,7 +335,7 @@ def profile_review_output(profile: dict[str, Any], *, status: str) -> dict[str, 
 
 
 def render_profile_review_markdown(profile: dict[str, Any], *, status: str) -> str:
-    """Render ProfilerAgent output as a reviewer-friendly Markdown block."""
+    """Render ResearcherAgent output as a reviewer-friendly Markdown block."""
     name = profile.get("name") or "unknown"
     slug = profile.get("slug") or name_to_slug(name)
     primary_url = (
@@ -518,7 +388,7 @@ def render_profile_review_markdown(profile: dict[str, Any], *, status: str) -> s
     else:
         lines.extend([
             "## Scope Decision",
-            "The profiler did not call save_tool_profile or save_rejected_profile, so the result is unresolved.",
+            "The agent did not call save_tool_profile or save_rejected_profile, so the result is unresolved.",
             "",
         ])
 
@@ -531,61 +401,6 @@ def render_profile_review_markdown(profile: dict[str, Any], *, status: str) -> s
         "",
     ])
     return "\n".join(lines)
-
-
-def writer_review_output(
-    *,
-    draft_markdown: str,
-    comparison_table_markdown: str,
-) -> dict[str, Any]:
-    """Return Annotation Queue-friendly Writer output fields."""
-    return {
-        "writer_review_markdown": render_writer_review_markdown(
-            draft_markdown=draft_markdown,
-            comparison_table_markdown=comparison_table_markdown,
-        ),
-        "draft_markdown": draft_markdown,
-        "comparison_table_markdown": comparison_table_markdown,
-        "draft_path": "draft.md",
-        "comparison_table_path": "comparison_table.md",
-        "tool_count": _count_comparison_table_rows(comparison_table_markdown),
-    }
-
-
-def render_writer_review_markdown(
-    *,
-    draft_markdown: str,
-    comparison_table_markdown: str,
-) -> str:
-    """Render WriterAgent output as a reviewer-friendly Markdown block."""
-    draft_preview = draft_markdown.strip() or "No draft content captured."
-    table_preview = comparison_table_markdown.strip() or "No comparison table captured."
-    return "\n".join([
-        "# Writer Output Review",
-        "",
-        "## Reviewer Checklist",
-        "- Is the report factual and neutral?",
-        "- Are comparison table fields aligned with tool profiles?",
-        "- Are citations appropriate for the claims?",
-        "- Are unknown fields left as unknown rather than guessed?",
-        "",
-        "## Comparison Table",
-        "",
-        table_preview,
-        "",
-        "## Draft",
-        "",
-        draft_preview,
-        "",
-    ])
-
-
-def _count_comparison_table_rows(markdown: str) -> int:
-    rows = [
-        line for line in markdown.splitlines()
-        if line.startswith("|") and "---" not in line
-    ]
-    return max(len(rows) - 1, 0)
 
 
 def name_to_slug(name: str) -> str:
@@ -611,27 +426,8 @@ def backup_run_dir(run_dir: Path) -> Path:
         n += 1
 
 
-def should_skip_discovery(output_dir: Path) -> bool:
-    """Return True if a non-empty _candidates.jsonl already exists."""
-    candidates_file = output_dir / "_candidates.jsonl"
-    if not candidates_file.exists():
-        return False
-    content = candidates_file.read_text().strip()
-    return bool(content)
-
-
-def get_unprofiled_candidates(output_dir: Path) -> list:
-    """Return candidates that have not yet been profiled (no tools/{slug}.md)."""
-    from autoresearch_researcher.tools.persistence import load_candidates
-    candidates_file = output_dir / "_candidates.jsonl"
-    tools_dir = output_dir / "tools"
-    candidates = load_candidates(candidates_file)
-    profiled_slugs = {f.stem for f in tools_dir.glob("*.md")} if tools_dir.exists() else set()
-    return [c for c in candidates if name_to_slug(c.name) not in profiled_slugs]
-
-
 def append_profile_run(output_dir: Path, record: dict[str, Any]) -> None:
-    """Append one per-tool profiling trace link to _profile_runs.jsonl."""
+    """Append one per-tool research trace link to _profile_runs.jsonl."""
     path = output_dir / "_profile_runs.jsonl"
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a") as f:
@@ -671,133 +467,83 @@ def stage_run_config(
     )
 
 
-def _profile_status_from_files(
+def build_exclusion_block(registry, output_dir: Path) -> str:
+    """List tools already covered (registry + this run's rejections) for the prompt."""
+    lines: list[str] = []
+    seen: set[str] = set()
+    for entry in registry.get_all_entries():
+        key = (entry.url or "").strip().lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        lines.append(f"- {entry.name} ({entry.url})")
+    for row in load_jsonl(output_dir / "_rejected_profiles.jsonl"):
+        url = (
+            row.get("github_url")
+            or row.get("project_url")
+            or row.get("paper_url")
+            or row.get("url")
+            or ""
+        )
+        lines.append(f"- {row.get('name')} ({url}) [rejected]")
+    return "\n".join(lines) if lines else "(none yet)"
+
+
+def _registry_url_for_slug(registry, slug: str) -> str | None:
+    for entry in registry.get_all_entries():
+        if entry.slug == slug:
+            return entry.url
+    return None
+
+
+def _iteration_outcome(
     output_dir: Path,
     *,
-    candidate_name: str,
     new_before: int,
     updated_before: int,
     rejected_before: int,
+    no_new_before: int,
 ) -> dict[str, Any]:
-    """Infer accepted/rejected result from profiler tool output files."""
+    """Infer what a single ResearcherAgent run produced, from its output files."""
     new_rows = load_jsonl(output_dir / "_new_candidates.jsonl")
     updated_rows = load_jsonl(output_dir / "_updated_tools.jsonl")
     rejected_rows = load_jsonl(output_dir / "_rejected_profiles.jsonl")
+    no_new_rows = load_jsonl(output_dir / "_no_new_tool.jsonl")
 
-    for row in new_rows[new_before:]:
+    for row in reversed(new_rows[new_before:]):
         return {
             "status": "accepted",
-            "slug": row.get("slug") or name_to_slug(row.get("name", candidate_name)),
+            "slug": row.get("slug") or name_to_slug(row.get("name", "")),
+            "name": row.get("name"),
             "rejection_reason": None,
+            "stop": False,
         }
-    for row in updated_rows[updated_before:]:
+    for row in reversed(updated_rows[updated_before:]):
         return {
             "status": "accepted",
-            "slug": row.get("slug") or name_to_slug(row.get("name", candidate_name)),
+            "slug": row.get("slug") or name_to_slug(row.get("name", "")),
+            "name": row.get("name"),
             "rejection_reason": None,
+            "stop": False,
         }
-    for row in rejected_rows[rejected_before:]:
+    for row in reversed(rejected_rows[rejected_before:]):
         return {
             "status": "rejected",
-            "slug": row.get("slug") or name_to_slug(row.get("name", candidate_name)),
-            "rejection_reason": row.get("rejection_reason"),
-        }
-    return {"status": "unknown", "slug": name_to_slug(candidate_name), "rejection_reason": None}
-
-
-async def profile_tool_candidate(
-    *,
-    candidate,
-    day: str,
-    run_id: str,
-    output_dir: Path,
-    registry,
-    profiler_prompt_hash: str,
-    profiler_prompt_ref: str | None = None,
-    profiler_instructions: str | None = None,
-    search_backend: SearchBackend = DEFAULT_SEARCH_BACKEND,
-) -> tuple[int, int, float, dict[str, Any]]:
-    """Profile a single candidate as a named Agents SDK root trace."""
-    from autoresearch_researcher.agents.profiler import build_profiler_agent
-
-    workflow_name = f"stage2_profile_{name_to_slug(candidate.name)}"
-    profile_trace_id = gen_trace_id()
-    new_before = len(load_jsonl(output_dir / "_new_candidates.jsonl"))
-    updated_before = len(load_jsonl(output_dir / "_updated_tools.jsonl"))
-    rejected_before = len(load_jsonl(output_dir / "_rejected_profiles.jsonl"))
-
-    profile_prompt = (
-        f"Profile this tool candidate and determine if it is in scope:\n"
-        f"Name: {candidate.name}\nURL: {candidate.url}\nDescription: {candidate.description}"
-    )
-    profiler_agent = build_profiler_agent(
-        output_dir=output_dir,
-        registry=registry,
-        day=day,
-        search_backend=search_backend,
-        instructions_override=profiler_instructions,
-    )
-
-    with weave.attributes({
-        "day": day,
-        "run_id": run_id,
-        "stage": "profiling",
-        "tool_name": candidate.name,
-        "candidate_url": candidate.url,
-        "profiler_prompt_hash": profiler_prompt_hash,
-        "profiler_prompt_ref": profiler_prompt_ref,
-        "search_backend": search_backend,
-    }):
-        prof_result = await Runner.run(
-            profiler_agent,
-            input=profile_prompt,
-            max_turns=15,
-            run_config=stage_run_config(
-                workflow_name=workflow_name,
-                day=day,
-                run_id=run_id,
-                stage="profiling",
-                trace_id=profile_trace_id,
-                metadata={
-                    "tool_name": candidate.name,
-                    "candidate_url": candidate.url,
-                    "profiler_prompt_hash": profiler_prompt_hash,
-                    "profiler_prompt_ref": profiler_prompt_ref,
-                    "search_backend": search_backend,
-                },
+            "slug": row.get("slug") or name_to_slug(row.get("name", "")),
+            "name": row.get("name"),
+            "url": (
+                row.get("github_url")
+                or row.get("project_url")
+                or row.get("paper_url")
+                or row.get("url")
             ),
-        )
+            "rejection_reason": row.get("rejection_reason"),
+            "stop": False,
+        }
+    if no_new_rows[no_new_before:]:
+        return {"status": "no_new", "stop": True}
+    return {"status": "unknown", "stop": True}
 
-    usage = _extract_usage(prof_result)
-    call_id, trace_url = get_agent_trace_call_metadata(profile_trace_id)
-    status = _profile_status_from_files(
-        output_dir,
-        candidate_name=candidate.name,
-        new_before=new_before,
-        updated_before=updated_before,
-        rejected_before=rejected_before,
-    )
-    record = {
-        "day": day,
-        "run_id": run_id,
-        "slug": status["slug"],
-        "name": candidate.name,
-        "url": candidate.url,
-        "status": status["status"],
-        "rejection_reason": status["rejection_reason"],
-        "agent_trace_id": profile_trace_id,
-        "workflow_name": workflow_name,
-        "weave_call_id": call_id,
-        "trace_url": trace_url,
-        "profiler_prompt_hash": profiler_prompt_hash,
-        "profiler_prompt_ref": profiler_prompt_ref,
-        "search_backend": search_backend,
-        "prompt_tokens": usage[0],
-        "completion_tokens": usage[1],
-        "cost_usd": usage[2],
-    }
-    append_profile_run(output_dir, record)
-    return usage[0], usage[1], usage[2], record
 
 async def run_briefing(
     day: str,
@@ -806,17 +552,17 @@ async def run_briefing(
     max_cost_usd: float,
     dry_run: bool,
     search_backend: SearchBackend = DEFAULT_SEARCH_BACKEND,
+    recency: RecencyWindow | None = None,
 ) -> None:
     """
-    Full pipeline: Discovery → Profiling → Writing.
+    Single-agent pipeline: run ResearcherAgent up to ``max_tools`` times, each
+    profiling one new tool, then build the Agentforge feed (items/* + manifest).
 
     Respects max_cost_usd; preserves partial outputs on budget exceeded.
     Weave tracing must be initialized before calling this (init_observability).
     """
-    from autoresearch_researcher.agents.discovery import build_discovery_agent
-    from autoresearch_researcher.agents.writer import build_writer_agent, generate_highlights
+    from autoresearch_researcher.agents.researcher import build_researcher_agent
     from autoresearch_researcher.tools.feed import build_feed_output
-    from autoresearch_researcher.tools.persistence import load_candidates
     from autoresearch_researcher.tools.prompts import (
         load_local_instruction_prompts,
         prompt_contents,
@@ -849,23 +595,20 @@ async def run_briefing(
     prompt_tokens = 0
     completion_tokens = 0
     total_cost = 0.0
-    discovery_count = 0
     profiled_count = 0
     accepted_count = 0
     rejected_count = 0
 
-    candidates_file = output_dir / "_candidates.jsonl"
     registry_dir = output_dir.parent / "_registry"
     registry = ToolRegistry.load(registry_dir)
     print(f"[orchestrator] Registry loaded: {len(registry.get_all_entries())} known tools")
 
     if dry_run:
-        # In dry-run mode, skip real LLM calls; create placeholder outputs
         _write_dry_run_outputs(
             output_dir,
             day,
             run_id=run_id,
-            profiler_prompt_hash=prompt_hash_map["profiler"],
+            researcher_prompt_hash=prompt_hash_map["researcher"],
             search_backend=search_backend,
         )
         update_metadata_counts(
@@ -880,138 +623,117 @@ async def run_briefing(
         return
 
     try:
-        # ── Stage 1: Discovery (skip if _candidates.jsonl already exists) ─────
-        if should_skip_discovery(output_dir):
-            print(f"[orchestrator] Skipping Discovery — {candidates_file} already exists.")
-        else:
-            discovery_agent = build_discovery_agent(
+        for i in range(max_tools):
+            budget.check()
+
+            new_before = len(load_jsonl(output_dir / "_new_candidates.jsonl"))
+            updated_before = len(load_jsonl(output_dir / "_updated_tools.jsonl"))
+            rejected_before = len(load_jsonl(output_dir / "_rejected_profiles.jsonl"))
+            no_new_before = len(load_jsonl(output_dir / "_no_new_tool.jsonl"))
+
+            workflow_name = f"stage_research_{i + 1}"
+            trace_id = gen_trace_id()
+            exclusion_block = build_exclusion_block(registry, output_dir)
+            recency_hint = (
+                f" Prefer tools and sources from the last {recency}." if recency else ""
+            )
+            research_prompt = (
+                f"Find ONE new experiment-automation tool for {day} and profile it.\n\n"
+                "Already covered — do NOT re-profile any of these:\n"
+                f"{exclusion_block}\n\n"
+                "Search the web for a single in-scope tool that is not in the list above."
+                f"{recency_hint} "
+                "Call is_known_tool(url) before committing to a candidate. "
+                "If in scope, save sources then call save_tool_profile_tool. "
+                "If out of scope, call save_rejected_profile_tool with a clear reason. "
+                "If you cannot find any new in-scope tool, call report_no_new_tool."
+            )
+
+            agent = build_researcher_agent(
                 output_dir=output_dir,
-                max_tools=max_tools,
                 registry=registry,
+                day=day,
                 search_backend=search_backend,
-                instructions_override=prompt_content_map["discovery"],
+                recency=recency,
+                instructions_override=prompt_content_map["researcher"],
             )
-            discovery_prompt = (
-                f"Discover experiment-automation tools for {day}. "
-                f"Find up to {max_tools} candidates and save them. "
-                "For each URL, first call is_known_tool to skip ones already in the registry."
-            )
+
             with weave.attributes({
                 "day": day,
                 "run_id": run_id,
-                "stage": "discovery",
-                "discovery_prompt_hash": prompt_hash_map["discovery"],
-                "discovery_prompt_ref": prompt_ref_map["discovery"],
+                "stage": "research",
+                "iteration": i + 1,
+                "researcher_prompt_hash": prompt_hash_map["researcher"],
+                "researcher_prompt_ref": prompt_ref_map["researcher"],
                 "search_backend": search_backend,
             }):
-                disc_result = await Runner.run(
-                    discovery_agent,
-                    input=discovery_prompt,
-                    max_turns=120,
+                result = await Runner.run(
+                    agent,
+                    input=research_prompt,
+                    max_turns=40,
                     run_config=stage_run_config(
-                        workflow_name="stage1_discovery",
+                        workflow_name=workflow_name,
                         day=day,
                         run_id=run_id,
-                        stage="discovery",
+                        stage="research",
+                        trace_id=trace_id,
                         metadata={
-                            "discovery_prompt_hash": prompt_hash_map["discovery"],
-                            "discovery_prompt_ref": prompt_ref_map["discovery"],
+                            "iteration": i + 1,
+                            "researcher_prompt_hash": prompt_hash_map["researcher"],
+                            "researcher_prompt_ref": prompt_ref_map["researcher"],
                             "search_backend": search_backend,
                         },
                     ),
                 )
 
-            usage = _extract_usage(disc_result)
+            usage = _extract_usage(result)
             prompt_tokens += usage[0]
             completion_tokens += usage[1]
             total_cost += usage[2]
-            budget.add(usage[2])
 
-        # ── Stage 2: Profiling (registry-aware) ───────────────────────────────
-        candidates = load_candidates(candidates_file)
-        discovery_count = len(candidates)
-        # Filter out candidates that are already in the global registry
-        candidates = [c for c in candidates if not registry.contains(c.url)]
-        print(f"[orchestrator] Profiling {len(candidates)} new candidates (registry already has known ones)")
-
-        for candidate in candidates:
-            budget.check()
-            with weave.attributes({
-                "day": day,
-                "run_id": run_id,
-                "stage": "profiling",
-                "tool_name": candidate.name,
-                "candidate_url": candidate.url,
-                "profiler_prompt_hash": prompt_hash_map["profiler"],
-                "profiler_prompt_ref": prompt_ref_map["profiler"],
-                "search_backend": search_backend,
-            }):
-                usage_p, usage_c, usage_cost, record = await profile_tool_candidate(
-                    candidate=candidate,
-                    day=day,
-                    run_id=run_id,
-                    output_dir=output_dir,
-                    registry=registry,
-                    profiler_prompt_hash=prompt_hash_map["profiler"],
-                    profiler_prompt_ref=prompt_ref_map["profiler"],
-                    profiler_instructions=prompt_content_map["profiler"],
-                    search_backend=search_backend,
-                )
-            prompt_tokens += usage_p
-            completion_tokens += usage_c
-            total_cost += usage_cost
-            budget.add(usage_cost)
-            profiled_count += 1
-            if record["status"] == "accepted":
-                accepted_count += 1
-            elif record["status"] == "rejected":
-                rejected_count += 1
-
-        # ── Stage 3: Writing ──────────────────────────────────────────────────
-        # Build highlights from today's _new_candidates / _updated_tools
-        highlights_md = generate_highlights(output_dir, day=day)
-        (output_dir / "highlights.md").write_text(highlights_md)
-
-        # Writer reads from the global registry, not day_dir/tools/
-        writer_agent = build_writer_agent(
-            output_dir=output_dir,
-            day=day,
-            registry=registry,
-            instructions_override=prompt_content_map["writer"],
-        )
-        write_prompt = (
-            f"Generate the daily briefing for {day}. "
-            "Call read_tool_profiles_tool to load profiles from the global registry, "
-            "then incorporate the pre-generated highlights from highlights.md, "
-            "and save the final draft via save_draft_tool and save_comparison_table_tool."
-        )
-        with weave.attributes({
-            "day": day,
-            "run_id": run_id,
-            "stage": "writing",
-            "writer_prompt_hash": prompt_hash_map["writer"],
-            "writer_prompt_ref": prompt_ref_map["writer"],
-        }):
-            write_result = await Runner.run(
-                writer_agent,
-                input=write_prompt,
-                max_turns=20,
-                run_config=stage_run_config(
-                    workflow_name="stage3_writer",
-                    day=day,
-                    run_id=run_id,
-                    stage="writing",
-                    metadata={
-                        "writer_prompt_hash": prompt_hash_map["writer"],
-                        "writer_prompt_ref": prompt_ref_map["writer"],
-                    },
-                ),
+            outcome = _iteration_outcome(
+                output_dir,
+                new_before=new_before,
+                updated_before=updated_before,
+                rejected_before=rejected_before,
+                no_new_before=no_new_before,
             )
 
-        usage = _extract_usage(write_result)
-        prompt_tokens += usage[0]
-        completion_tokens += usage[1]
-        total_cost += usage[2]
+            if outcome["status"] in ("accepted", "rejected"):
+                call_id, trace_url = get_agent_trace_call_metadata(trace_id)
+                url = outcome.get("url")
+                if outcome["status"] == "accepted":
+                    url = _registry_url_for_slug(registry, outcome["slug"])
+                append_profile_run(output_dir, {
+                    "day": day,
+                    "run_id": run_id,
+                    "slug": outcome["slug"],
+                    "name": outcome.get("name"),
+                    "url": url,
+                    "status": outcome["status"],
+                    "rejection_reason": outcome.get("rejection_reason"),
+                    "agent_trace_id": trace_id,
+                    "workflow_name": workflow_name,
+                    "weave_call_id": call_id,
+                    "trace_url": trace_url,
+                    "researcher_prompt_hash": prompt_hash_map["researcher"],
+                    "researcher_prompt_ref": prompt_ref_map["researcher"],
+                    "search_backend": search_backend,
+                    "prompt_tokens": usage[0],
+                    "completion_tokens": usage[1],
+                    "cost_usd": usage[2],
+                })
+                profiled_count += 1
+                if outcome["status"] == "accepted":
+                    accepted_count += 1
+                else:
+                    rejected_count += 1
+
+            budget.add(usage[2])
+
+            if outcome["stop"]:
+                print(f"[orchestrator] Stopping after iteration {i + 1}: no new tool found.")
+                break
 
     except BudgetExceededError:
         # Partial outputs already on disk — do not clean up
@@ -1020,15 +742,14 @@ async def run_briefing(
     finally:
         update_metadata_counts(
             metadata_path,
-            discovery_count=discovery_count,
+            discovery_count=profiled_count,
             profiled_count=profiled_count,
             accepted_count=accepted_count,
             rejected_count=rejected_count,
         )
         if metadata_path.exists():
             update_metadata_costs(metadata_path, total_cost, prompt_tokens, completion_tokens)
-        if (output_dir / "draft.md").exists():
-            build_feed_output(output_dir, registry=registry, day=day)
+        build_feed_output(output_dir, registry=registry, day=day)
 
 
 def _extract_usage(result) -> tuple[int, int, float]:
@@ -1064,30 +785,24 @@ def _write_dry_run_outputs(
     day: str,
     *,
     run_id: str | None = None,
-    profiler_prompt_hash: str | None = None,
+    researcher_prompt_hash: str | None = None,
     search_backend: str | None = None,
 ) -> None:
     """
     Create synthetic placeholder output files for dry-run mode.
-    Generates exactly _DRY_RUN_TOOL_COUNT in-scope experiment-automation tool profiles.
+    Generates exactly _DRY_RUN_TOOL_COUNT in-scope experiment-automation tool profiles
+    so the feed builder has profiles to turn into items/* + manifest.json.
     """
     import yaml
 
     tools_dir = output_dir / "tools"
     tools_dir.mkdir(parents=True, exist_ok=True)
-    sources_file = output_dir / "sources.jsonl"
-    candidates_lines = []
+    new_candidates_file = output_dir / "_new_candidates.jsonl"
 
     for i in range(_DRY_RUN_TOOL_COUNT):
         slug = f"synthetic-exp-tool-{i}"
         name = f"Synthetic Experiment Tool {i}"
         category = _DRY_RUN_CATEGORIES[i % len(_DRY_RUN_CATEGORIES)]
-        description = _DRY_RUN_DESCRIPTIONS[i % len(_DRY_RUN_DESCRIPTIONS)]
-
-        candidates_lines.append(json.dumps({
-            "name": name, "url": f"https://example-{i}.com",
-            "description": description, "category": category,
-        }))
 
         front = {
             "slug": slug, "name": name, "license": "MIT",
@@ -1105,68 +820,29 @@ def _write_dry_run_outputs(
         body = (
             f"# {name}\n\n"
             f"**Autonomy level**: Scientist — Executes full experiment loop autonomously\n\n"
-            f"## Known Limitations\n- Dry run synthetic entry [^{i+1}]\n"
+            f"## Known Limitations\n- Dry run synthetic entry\n"
         )
         profile_md = "---\n" + yaml.dump(front, allow_unicode=True, sort_keys=False) + "---\n\n" + body
         (tools_dir / f"{slug}.md").write_text(profile_md)
 
-        from datetime import datetime, timezone
-        source = json.dumps({
-            "id": i + 1,
-            "url": f"https://example-{i}.com",
-            "title": f"Example Source {i}",
-            "fetched_at": datetime.now(timezone.utc).isoformat(),
-            "used_in": [slug],
-        })
-        with sources_file.open("a") as f:
-            f.write(source + "\n")
+        with new_candidates_file.open("a") as f:
+            f.write(json.dumps({"slug": slug, "name": name, "stars": front["stars"]}) + "\n")
 
         append_profile_run(output_dir, {
             "day": day,
             "run_id": run_id,
             "slug": slug,
             "name": name,
-            "url": f"https://example-{i}.com",
+            "url": f"https://github.com/example/tool-{i}",
             "status": "accepted",
             "rejection_reason": None,
             "agent_trace_id": None,
-            "workflow_name": f"stage2_profile_{slug}",
+            "workflow_name": f"stage_research_{i + 1}",
             "weave_call_id": None,
             "trace_url": None,
-            "profiler_prompt_hash": profiler_prompt_hash,
+            "researcher_prompt_hash": researcher_prompt_hash,
             "search_backend": search_backend,
             "prompt_tokens": 0,
             "completion_tokens": 0,
             "cost_usd": 0.0,
         })
-
-    (output_dir / "_candidates.jsonl").write_text("\n".join(candidates_lines) + "\n")
-
-    # Build comparison table from synthetic profiles
-    from autoresearch_researcher.agents.writer import load_tool_profiles_from_dir, generate_comparison_table
-    profiles = load_tool_profiles_from_dir(tools_dir)
-    table = generate_comparison_table(profiles)
-    (output_dir / "comparison_table.md").write_text(table)
-
-    # Build draft with all citations
-    draft_lines = [
-        f"# Daily Briefing: Experiment-Automation Tools",
-        f"**Day**: {day}",
-        f"**Published**: (dry run)",
-        f"**Tools covered**: {_DRY_RUN_TOOL_COUNT}",
-        f"**Sources**: {_DRY_RUN_TOOL_COUNT}",
-        "",
-        "## Today's Highlights",
-        "",
-        "First issue — baseline established.",
-        "",
-    ]
-    for i in range(_DRY_RUN_TOOL_COUNT):
-        slug = f"synthetic-exp-tool-{i}"
-        draft_lines += [f"## Synthetic Experiment Tool {i}", "", f"Dry run entry. [^{i+1}]", ""]
-
-    draft_lines += ["## References", ""]
-    for i in range(_DRY_RUN_TOOL_COUNT):
-        draft_lines.append(f"[^{i+1}]: https://example-{i}.com")
-
-    (output_dir / "draft.md").write_text("\n".join(draft_lines) + "\n")

@@ -1,4 +1,4 @@
-"""Tests for per-tool independent trace records and feedback ingestion."""
+"""Tests for per-tool research trace records, review output, and dry-run feed."""
 
 import json
 from types import SimpleNamespace
@@ -9,7 +9,7 @@ import pytest
 def test_append_profile_run_writes_trace_contract(tmp_path):
     from autoresearch_researcher.orchestrator import append_profile_run
 
-    append_profile_run(tmp_path, {
+    record = {
         "day": "2026-05-28",
         "run_id": "2026-05-29-test",
         "slug": "tool-a",
@@ -18,43 +18,34 @@ def test_append_profile_run_writes_trace_contract(tmp_path):
         "status": "accepted",
         "weave_call_id": "call-123",
         "trace_url": "https://wandb.ai/call-123",
-        "profiler_prompt_hash": "abc123",
-    })
+        "researcher_prompt_hash": "abc123",
+    }
+    append_profile_run(tmp_path, record)
 
     rows = [json.loads(line) for line in (tmp_path / "_profile_runs.jsonl").read_text().splitlines()]
-    assert rows == [{
-        "day": "2026-05-28",
-        "run_id": "2026-05-29-test",
-        "slug": "tool-a",
-        "name": "Tool A",
-        "url": "https://example.com/tool-a",
-        "status": "accepted",
-        "weave_call_id": "call-123",
-        "trace_url": "https://wandb.ai/call-123",
-        "profiler_prompt_hash": "abc123",
-    }]
+    assert rows == [record]
 
 
-def test_stage_run_config_names_agent_workflow():
+def test_stage_run_config_names_research_workflow():
     from autoresearch_researcher.orchestrator import stage_run_config
 
     config = stage_run_config(
-        workflow_name="stage2_profile_tool-a",
+        workflow_name="stage_research_1",
         day="2026-05-28",
         run_id="run-123",
-        stage="profiling",
+        stage="research",
         trace_id="trace_123",
-        metadata={"tool_name": "Tool A"},
+        metadata={"iteration": 1},
     )
 
-    assert config.workflow_name == "stage2_profile_tool-a"
+    assert config.workflow_name == "stage_research_1"
     assert config.trace_id == "trace_123"
     assert config.group_id == "run-123"
     assert config.trace_metadata == {
         "day": "2026-05-28",
         "run_id": "run-123",
-        "stage": "profiling",
-        "tool_name": "Tool A",
+        "stage": "research",
+        "iteration": 1,
     }
 
 
@@ -66,11 +57,11 @@ def test_patch_weave_agent_span_names_names_task_and_turn_spans():
 
     patch_weave_agent_span_names()
 
-    task_span = SimpleNamespace(span_data=TaskSpanData(name="stage1_discovery"))
-    turn_span = SimpleNamespace(span_data=TurnSpanData(turn=2, agent_name="DiscoveryAgent"))
+    task_span = SimpleNamespace(span_data=TaskSpanData(name="stage_research_1"))
+    turn_span = SimpleNamespace(span_data=TurnSpanData(turn=2, agent_name="ResearcherAgent"))
 
-    assert weave_openai_agents._call_name(task_span) == "stage1_discovery"
-    assert weave_openai_agents._call_name(turn_span) == "DiscoveryAgent turn 2"
+    assert weave_openai_agents._call_name(task_span) == "stage_research_1"
+    assert weave_openai_agents._call_name(turn_span) == "ResearcherAgent turn 2"
 
 
 def test_autoresearch_processor_skips_task_and_turn_spans():
@@ -86,13 +77,13 @@ def test_autoresearch_processor_skips_task_and_turn_spans():
         trace_id="trace-1",
         span_id="task-1",
         parent_id=None,
-        span_data=TaskSpanData(name="stage1_discovery"),
+        span_data=TaskSpanData(name="stage_research_1"),
     )
     turn_span = SimpleNamespace(
         trace_id="trace-1",
         span_id="turn-1",
         parent_id="task-1",
-        span_data=TurnSpanData(turn=0, agent_name="DiscoveryAgent"),
+        span_data=TurnSpanData(turn=0, agent_name="ResearcherAgent"),
     )
 
     processor.on_span_start(task_span)
@@ -114,67 +105,9 @@ def test_hidden_turn_children_are_reparented_to_agent_call():
     processor._trace_calls["trace-1"] = root_call
     processor._hidden_span_parent_calls["turn-1"] = agent_call
 
-    tool_span = SimpleNamespace(
-        trace_id="trace-1",
-        span_id="tool-1",
-        parent_id="turn-1",
-    )
+    tool_span = SimpleNamespace(trace_id="trace-1", span_id="tool-1", parent_id="turn-1")
 
     assert processor._get_parent_call(tool_span) is agent_call
-
-
-def test_render_discovery_review_markdown_lists_candidates():
-    from autoresearch_researcher.orchestrator import render_discovery_review_markdown
-
-    markdown = render_discovery_review_markdown(
-        candidates=[{
-            "name": "Tool A",
-            "url": "https://example.com/tool-a",
-            "category": "ml-experiment-automation",
-            "description": "Runs experiments.",
-        }],
-        rejections=[{
-            "name": "Search Only",
-            "url": "https://example.com/search",
-            "category": "deep-research",
-            "rejection_reason": "Searches and summarizes only.",
-        }],
-    )
-
-    assert "# Discovery Results" in markdown
-    assert "| Tool A | https://example.com/tool-a | ml-experiment-automation | unknown | Runs experiments. |" in markdown
-    assert "Rejected During Discovery" in markdown
-    assert "Searches and summarizes only." in markdown
-
-
-def test_discovery_agent_output_contains_review_markdown():
-    from agents.tracing import AgentSpanData
-
-    from autoresearch_researcher.orchestrator import AutoresearchWeaveTracingProcessor
-
-    processor = AutoresearchWeaveTracingProcessor()
-    processor._discovery_candidates["trace-1"] = [{
-        "name": "Tool A",
-        "url": "https://example.com/tool-a",
-        "category": "ml-experiment-automation",
-        "description": "Runs experiments.",
-    }]
-    span = SimpleNamespace(
-        trace_id="trace-1",
-        span_data=AgentSpanData(
-            name="DiscoveryAgent",
-            tools=["search_web", "save_candidate_tool"],
-            handoffs=[],
-            output_type="str",
-        ),
-    )
-
-    data = processor._agent_log_data(span)
-
-    assert data["outputs"]["candidate_count"] == 1
-    assert "Tool A" in data["outputs"]["review_markdown"]
-    assert data["outputs"]["candidate_names"] == ["Tool A"]
-    assert data["outputs"]["candidate_urls"] == ["https://example.com/tool-a"]
 
 
 def test_profile_review_output_for_accepted_profile():
@@ -225,19 +158,32 @@ def test_profile_review_output_for_rejected_profile():
     assert "Curated list only." in output["profile_review_markdown"]
 
 
-def test_writer_review_output_contains_draft_and_table():
-    from autoresearch_researcher.orchestrator import writer_review_output
+def test_research_agent_output_contains_review_markdown():
+    from agents.tracing import AgentSpanData
 
-    table = "| Tool Name | License |\n|---|---|\n| Tool A | MIT |\n"
-    output = writer_review_output(
-        draft_markdown="# Draft\n\nBody",
-        comparison_table_markdown=table,
+    from autoresearch_researcher.orchestrator import AutoresearchWeaveTracingProcessor
+
+    processor = AutoresearchWeaveTracingProcessor()
+    processor._accepted_profiles["trace-1"] = {
+        "slug": "tool-a",
+        "name": "Tool A",
+        "github_url": "https://github.com/example/tool-a",
+        "key_limitations": ["Needs GPU"],
+    }
+    span = SimpleNamespace(
+        trace_id="trace-1",
+        span_data=AgentSpanData(
+            name="ResearcherAgent",
+            tools=["search_web", "save_tool_profile_tool"],
+            handoffs=[],
+            output_type="str",
+        ),
     )
 
-    assert output["tool_count"] == 1
-    assert output["draft_markdown"] == "# Draft\n\nBody"
-    assert "Writer Output Review" in output["writer_review_markdown"]
-    assert "| Tool A | MIT |" in output["writer_review_markdown"]
+    data = processor._agent_log_data(span)
+
+    assert data["outputs"]["verdict"] == "accepted"
+    assert "Tool A" in data["outputs"]["profile_review_markdown"]
 
 
 def test_processor_trace_end_merges_registered_review_output(monkeypatch):
@@ -252,15 +198,15 @@ def test_processor_trace_end_merges_registered_review_output(monkeypatch):
             finished["output"] = output
 
     processor = AutoresearchWeaveTracingProcessor()
-    processor._trace_data["trace-1"] = {"metrics": {}, "metadata": {"stage": "profiling"}}
+    processor._trace_data["trace-1"] = {"metrics": {}, "metadata": {"stage": "research"}}
     processor._trace_calls["trace-1"] = object()
-    processor._profiler_profiles["trace-1"] = {
+    processor._accepted_profiles["trace-1"] = {
         "slug": "tool-a",
         "name": "Tool A",
         "github_url": "https://github.com/example/tool-a",
     }
     monkeypatch.setattr(orchestrator, "get_weave_client", lambda: FakeClient())
-    trace = SimpleNamespace(trace_id="trace-1", name="stage2_profile_tool-a")
+    trace = SimpleNamespace(trace_id="trace-1", name="stage_research_1")
 
     processor.on_trace_end(trace)
 
@@ -276,42 +222,52 @@ def test_parse_tool_input_accepts_json_string():
     assert parse_tool_input("not-json") == {}
 
 
-def test_profile_status_from_files_detects_accepted_and_rejected(tmp_path):
-    from autoresearch_researcher.orchestrator import _profile_status_from_files
+def test_iteration_outcome_detects_accepted_rejected_and_no_new(tmp_path):
+    from autoresearch_researcher.orchestrator import _iteration_outcome
 
     (tmp_path / "_new_candidates.jsonl").write_text(
         json.dumps({"slug": "accepted-tool", "name": "Accepted Tool"}) + "\n"
     )
-    accepted = _profile_status_from_files(
-        tmp_path,
-        candidate_name="Accepted Tool",
-        new_before=0,
-        updated_before=0,
-        rejected_before=0,
+    accepted = _iteration_outcome(
+        tmp_path, new_before=0, updated_before=0, rejected_before=0, no_new_before=0
     )
     assert accepted["status"] == "accepted"
     assert accepted["slug"] == "accepted-tool"
+    assert accepted["stop"] is False
 
     (tmp_path / "_rejected_profiles.jsonl").write_text(
-        json.dumps({
-            "slug": "rejected-tool",
-            "name": "Rejected Tool",
-            "rejection_reason": "Deep research only",
-        }) + "\n"
+        json.dumps({"slug": "rejected-tool", "name": "Rejected Tool", "rejection_reason": "Deep research only"}) + "\n"
     )
-    rejected = _profile_status_from_files(
-        tmp_path,
-        candidate_name="Rejected Tool",
-        new_before=1,
-        updated_before=0,
-        rejected_before=0,
+    rejected = _iteration_outcome(
+        tmp_path, new_before=1, updated_before=0, rejected_before=0, no_new_before=0
     )
     assert rejected["status"] == "rejected"
     assert rejected["rejection_reason"] == "Deep research only"
 
+    (tmp_path / "_no_new_tool.jsonl").write_text(json.dumps({"reason": "nothing left"}) + "\n")
+    no_new = _iteration_outcome(
+        tmp_path, new_before=1, updated_before=0, rejected_before=1, no_new_before=0
+    )
+    assert no_new["status"] == "no_new"
+    assert no_new["stop"] is True
+
+
+def test_build_exclusion_block_lists_registry_and_rejections(tmp_path):
+    from autoresearch_researcher.orchestrator import build_exclusion_block
+    from autoresearch_researcher.tools.registry import ToolRegistry
+
+    registry = ToolRegistry.load(tmp_path / "_registry")
+    (tmp_path / "_rejected_profiles.jsonl").write_text(
+        json.dumps({"name": "Rejected Tool", "url": "https://example.com/rejected"}) + "\n"
+    )
+
+    block = build_exclusion_block(registry, tmp_path)
+    assert "Rejected Tool" in block
+    assert "https://example.com/rejected" in block
+
 
 @pytest.mark.asyncio
-async def test_dry_run_writes_profile_runs_and_prompt_hashes(tmp_path):
+async def test_dry_run_writes_profiles_runs_and_feed(tmp_path):
     from autoresearch_researcher.orchestrator import run_briefing
 
     await run_briefing(
@@ -327,19 +283,24 @@ async def test_dry_run_writes_profile_runs_and_prompt_hashes(tmp_path):
     assert metadata["accepted_count"] == 3
     assert metadata["rejected_count"] == 0
     assert metadata["search_backend"] == "serper"
-    assert metadata["prompt_refs"] == {"discovery": None, "profiler": None, "writer": None}
-    assert set(metadata["prompt_hashes"]) == {"discovery", "profiler", "writer"}
+    assert metadata["prompt_refs"] == {"researcher": None}
+    assert set(metadata["prompt_hashes"]) == {"researcher"}
 
     rows = [json.loads(line) for line in (tmp_path / "_profile_runs.jsonl").read_text().splitlines()]
     assert len(rows) == 3
     assert {row["status"] for row in rows} == {"accepted"}
     assert all(row["run_id"] == metadata["run_id"] for row in rows)
-    assert all(row["workflow_name"].startswith("stage2_profile_") for row in rows)
+    assert all(row["workflow_name"].startswith("stage_research_") for row in rows)
     assert all(row["search_backend"] == "serper" for row in rows)
+
     assert (tmp_path / "manifest.json").exists()
-    assert (tmp_path / "report.md").exists()
     assert (tmp_path / "items").exists()
+    assert len(list((tmp_path / "items").glob("*.json"))) == 3
     assert (tmp_path / "raw" / "run_metadata.json").exists()
+    # Writer artifacts are gone in the single-agent design.
+    assert not (tmp_path / "draft.md").exists()
+    assert not (tmp_path / "report.md").exists()
+    assert not (tmp_path / "comparison_table.md").exists()
 
 
 def test_feedback_ingest_writes_events_and_notes(tmp_path):

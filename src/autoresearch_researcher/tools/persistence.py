@@ -1,27 +1,12 @@
-"""Persistence tools: save candidates, profiles, drafts."""
+"""Persistence tools: save tool profiles and sources."""
 
 import json
 from pathlib import Path
 
 import yaml
 
-from autoresearch_researcher.schemas.candidate import Candidate, RejectedCandidate
 from autoresearch_researcher.schemas.sources import Source
 from autoresearch_researcher.schemas.tool_profile import ToolProfile
-
-
-def save_candidate(candidate: Candidate, output_file: Path) -> None:
-    """Append a candidate to the JSONL file."""
-    output_file.parent.mkdir(parents=True, exist_ok=True)
-    with output_file.open("a") as f:
-        f.write(json.dumps(candidate.model_dump()) + "\n")
-
-
-def save_rejected_candidate(candidate: RejectedCandidate, output_file: Path) -> None:
-    """Append a rejected candidate (with reason) to a separate JSONL file."""
-    output_file.parent.mkdir(parents=True, exist_ok=True)
-    with output_file.open("a") as f:
-        f.write(json.dumps(candidate.model_dump()) + "\n")
 
 
 def save_tool_profile(profile: ToolProfile, tools_dir: Path) -> None:
@@ -61,30 +46,6 @@ def save_tool_profile(profile: ToolProfile, tools_dir: Path) -> None:
     content = "---\n" + yaml.dump(front, allow_unicode=True, sort_keys=False) + "---\n\n"
     content += "\n".join(body_lines) + "\n"
     out_file.write_text(content)
-
-
-def save_draft(content: str, output_dir: Path) -> None:
-    """Save draft.md to the daily output directory."""
-    output_dir.mkdir(parents=True, exist_ok=True)
-    (output_dir / "draft.md").write_text(content)
-
-
-def save_comparison_table(content: str, output_dir: Path) -> None:
-    """Save comparison_table.md to the daily output directory."""
-    output_dir.mkdir(parents=True, exist_ok=True)
-    (output_dir / "comparison_table.md").write_text(content)
-
-
-def load_candidates(candidates_file: Path) -> list[Candidate]:
-    """Load all accepted candidates from a JSONL file."""
-    if not candidates_file.exists():
-        return []
-    candidates = []
-    for line in candidates_file.read_text().splitlines():
-        line = line.strip()
-        if line:
-            candidates.append(Candidate(**json.loads(line)))
-    return candidates
 
 
 def save_source(source: Source, sources_file: Path) -> None:
