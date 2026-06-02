@@ -106,13 +106,21 @@ class AutoresearchWeaveTracingProcessor(WeaveTracingProcessor):
 
         trace_data = self._trace_data[tid]
         self._ended_traces.add(tid)
+        call = self._trace_calls[tid]
+
+        # The workflow_name (stage_research_{i}) is fixed before the search runs,
+        # so the tool isn't known yet. Once the agent has saved/rejected a profile
+        # we relabel the call's display name with the tool name for easy review.
+        if trace.name and trace.name.startswith("stage_research_"):
+            self._set_research_display_name(call, tid)
+
         output = {
             "status": "completed",
             "metrics": trace_data.get("metrics", {}),
             "metadata": trace_data.get("metadata", {}),
         }
         output.update(self._review_output_for_trace(tid, trace.name))
-        wc.finish_call(self._trace_calls[tid], output=output)
+        wc.finish_call(call, output=output)
 
         self._trace_calls.pop(tid, None)
         self._trace_data.pop(tid, None)
@@ -166,6 +174,27 @@ class AutoresearchWeaveTracingProcessor(WeaveTracingProcessor):
         if trace_name and trace_name.startswith("stage_research_"):
             return self._research_review_output_for_trace(trace_id)
         return {}
+
+    def _research_display_name(self, trace_id: str) -> str | None:
+        """Tool name for a finished research trace (accepted or rejected), if known."""
+        profile = self._accepted_profiles.get(trace_id) or self._rejected_profiles.get(trace_id)
+        if not profile:
+            return None
+        name = profile.get("name") or profile.get("slug")
+        return str(name) if name else None
+
+    def _set_research_display_name(self, call, trace_id: str) -> None:
+        """Relabel a research call with the tool name (best-effort; never fatal)."""
+        display = self._research_display_name(trace_id)
+        if not display:
+            return
+        setter = getattr(call, "set_display_name", None)
+        if setter is None:
+            return
+        try:
+            setter(display)
+        except Exception:
+            pass
 
     def _research_review_output_for_trace(self, trace_id: str) -> dict[str, Any]:
         if trace_id in self._accepted_profiles:

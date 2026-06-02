@@ -215,6 +215,56 @@ def test_processor_trace_end_merges_registered_review_output(monkeypatch):
     assert "profile_review_markdown" in finished["output"]
 
 
+def test_trace_end_relabels_research_call_with_tool_name(monkeypatch):
+    from autoresearch_researcher import orchestrator
+    from autoresearch_researcher.orchestrator import AutoresearchWeaveTracingProcessor
+
+    renamed = {}
+
+    class FakeCall:
+        def set_display_name(self, name):
+            renamed["name"] = name
+
+    class FakeClient:
+        def finish_call(self, call, output):
+            pass
+
+    processor = AutoresearchWeaveTracingProcessor()
+    processor._trace_data["trace-1"] = {"metrics": {}, "metadata": {}}
+    processor._trace_calls["trace-1"] = FakeCall()
+    processor._accepted_profiles["trace-1"] = {"slug": "deepscientist", "name": "DeepScientist"}
+    monkeypatch.setattr(orchestrator, "get_weave_client", lambda: FakeClient())
+
+    processor.on_trace_end(SimpleNamespace(trace_id="trace-1", name="stage_research_3"))
+
+    assert renamed["name"] == "DeepScientist"
+
+
+def test_trace_end_skips_relabel_when_no_profile(monkeypatch):
+    from autoresearch_researcher import orchestrator
+    from autoresearch_researcher.orchestrator import AutoresearchWeaveTracingProcessor
+
+    renamed = {}
+
+    class FakeCall:
+        def set_display_name(self, name):
+            renamed["name"] = name
+
+    class FakeClient:
+        def finish_call(self, call, output):
+            pass
+
+    processor = AutoresearchWeaveTracingProcessor()
+    processor._trace_data["trace-1"] = {"metrics": {}, "metadata": {}}
+    processor._trace_calls["trace-1"] = FakeCall()
+    # no accepted/rejected profile recorded -> report_no_new_tool / unknown
+    monkeypatch.setattr(orchestrator, "get_weave_client", lambda: FakeClient())
+
+    processor.on_trace_end(SimpleNamespace(trace_id="trace-1", name="stage_research_1"))
+
+    assert "name" not in renamed
+
+
 def test_parse_tool_input_accepts_json_string():
     from autoresearch_researcher.orchestrator import parse_tool_input
 
