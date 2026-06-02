@@ -3,7 +3,7 @@
 The pipeline is a single ResearcherAgent run sequentially up to ``max_tools``
 times. Each run finds one experiment-automation tool not yet covered, profiles
 it, and saves a canonical profile (or rejects it). The reviewable trace unit is
-``stage_research_{i}`` -> ``ResearcherAgent``. After the loop, ``build_feed_output``
+``research_run_{i}`` -> ``ResearcherAgent``. After the loop, ``build_feed_output``
 turns the saved profiles into ``items/*`` + ``manifest.json``.
 """
 
@@ -108,10 +108,10 @@ class AutoresearchWeaveTracingProcessor(WeaveTracingProcessor):
         self._ended_traces.add(tid)
         call = self._trace_calls[tid]
 
-        # The workflow_name (stage_research_{i}) is fixed before the search runs,
+        # The workflow_name (research_run_{i}) is fixed before the search runs,
         # so the tool isn't known yet. Once the agent has saved/rejected a profile
         # we relabel the call's display name with the tool name for easy review.
-        if trace.name and trace.name.startswith("stage_research_"):
+        if trace.name and trace.name.startswith("research_run_"):
             self._set_research_display_name(call, tid)
 
         output = {
@@ -171,7 +171,7 @@ class AutoresearchWeaveTracingProcessor(WeaveTracingProcessor):
         return data
 
     def _review_output_for_trace(self, trace_id: str, trace_name: str) -> dict[str, Any]:
-        if trace_name and trace_name.startswith("stage_research_"):
+        if trace_name and trace_name.startswith("research_run_"):
             return self._research_review_output_for_trace(trace_id)
         return {}
 
@@ -680,7 +680,7 @@ async def run_briefing(
             rejected_before = len(load_jsonl(output_dir / "_rejected_profiles.jsonl"))
             no_new_before = len(load_jsonl(output_dir / "_no_new_tool.jsonl"))
 
-            workflow_name = f"stage_research_{i + 1}"
+            workflow_name = f"research_run_{i + 1}"
             trace_id = gen_trace_id()
             exclusion_block = build_exclusion_block(registry, output_dir)
             research_prompt = render_research_prompt(
@@ -878,7 +878,7 @@ def _write_dry_run_outputs(
             "status": "accepted",
             "rejection_reason": None,
             "agent_trace_id": None,
-            "workflow_name": f"stage_research_{i + 1}",
+            "workflow_name": f"research_run_{i + 1}",
             "weave_call_id": None,
             "trace_url": None,
             "researcher_prompt_hash": researcher_prompt_hash,

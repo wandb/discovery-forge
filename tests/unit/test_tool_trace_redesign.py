@@ -30,7 +30,7 @@ def test_stage_run_config_names_research_workflow():
     from autoresearch_researcher.orchestrator import stage_run_config
 
     config = stage_run_config(
-        workflow_name="stage_research_1",
+        workflow_name="research_run_1",
         day="2026-05-28",
         run_id="run-123",
         stage="research",
@@ -38,7 +38,7 @@ def test_stage_run_config_names_research_workflow():
         metadata={"iteration": 1},
     )
 
-    assert config.workflow_name == "stage_research_1"
+    assert config.workflow_name == "research_run_1"
     assert config.trace_id == "trace_123"
     assert config.group_id == "run-123"
     assert config.trace_metadata == {
@@ -88,10 +88,10 @@ def test_patch_weave_agent_span_names_names_task_and_turn_spans():
 
     patch_weave_agent_span_names()
 
-    task_span = SimpleNamespace(span_data=TaskSpanData(name="stage_research_1"))
+    task_span = SimpleNamespace(span_data=TaskSpanData(name="research_run_1"))
     turn_span = SimpleNamespace(span_data=TurnSpanData(turn=2, agent_name="ResearcherAgent"))
 
-    assert weave_openai_agents._call_name(task_span) == "stage_research_1"
+    assert weave_openai_agents._call_name(task_span) == "research_run_1"
     assert weave_openai_agents._call_name(turn_span) == "ResearcherAgent turn 2"
 
 
@@ -108,7 +108,7 @@ def test_autoresearch_processor_skips_task_and_turn_spans():
         trace_id="trace-1",
         span_id="task-1",
         parent_id=None,
-        span_data=TaskSpanData(name="stage_research_1"),
+        span_data=TaskSpanData(name="research_run_1"),
     )
     turn_span = SimpleNamespace(
         trace_id="trace-1",
@@ -248,7 +248,7 @@ def test_processor_trace_end_merges_registered_review_output(monkeypatch):
         "github_url": "https://github.com/example/tool-a",
     }
     monkeypatch.setattr(orchestrator, "get_weave_client", lambda: FakeClient())
-    trace = SimpleNamespace(trace_id="trace-1", name="stage_research_1")
+    trace = SimpleNamespace(trace_id="trace-1", name="research_run_1")
 
     processor.on_trace_end(trace)
 
@@ -277,7 +277,7 @@ def test_trace_end_relabels_research_call_with_tool_name(monkeypatch):
     processor._accepted_profiles["trace-1"] = {"slug": "deepscientist", "name": "DeepScientist"}
     monkeypatch.setattr(orchestrator, "get_weave_client", lambda: FakeClient())
 
-    processor.on_trace_end(SimpleNamespace(trace_id="trace-1", name="stage_research_3"))
+    processor.on_trace_end(SimpleNamespace(trace_id="trace-1", name="research_run_3"))
 
     assert renamed["name"] == "research_DeepScientist"
 
@@ -302,7 +302,7 @@ def test_trace_end_skips_relabel_when_no_profile(monkeypatch):
     # no accepted/rejected profile recorded -> report_no_new_tool / unknown
     monkeypatch.setattr(orchestrator, "get_weave_client", lambda: FakeClient())
 
-    processor.on_trace_end(SimpleNamespace(trace_id="trace-1", name="stage_research_1"))
+    processor.on_trace_end(SimpleNamespace(trace_id="trace-1", name="research_run_1"))
 
     assert "name" not in renamed
 
@@ -382,7 +382,7 @@ async def test_dry_run_writes_profiles_runs_and_feed(tmp_path):
     assert len(rows) == 3
     assert {row["status"] for row in rows} == {"accepted"}
     assert all(row["run_id"] == metadata["run_id"] for row in rows)
-    assert all(row["workflow_name"].startswith("stage_research_") for row in rows)
+    assert all(row["workflow_name"].startswith("research_run_") for row in rows)
     assert all(row["search_backend"] == "serper" for row in rows)
     assert all("search_lane_id" not in row for row in rows)
     assert all("search_lane_label" not in row for row in rows)

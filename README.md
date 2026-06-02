@@ -38,7 +38,7 @@ Each run is told what is already covered (an exclusion list built from the regis
 │  • Builds a per-run exclusion list (registry + this run's saves)  │
 │  • Passes iteration/exclusion/recency; agent writes search queries│
 │  • CostBudget: enforces --max-cost-usd, graceful shutdown         │
-│  • Weave traces: one stage_research_{i} trace per tool            │
+│  • Weave traces: one research_run_{i} trace per tool            │
 │  • After the loop: build_feed_output → items/* + manifest.json    │
 └─────────────────────────┬─────────────────────────────────────────┘
                           ▼
@@ -86,14 +86,14 @@ daily_runs/{day}/
 
 Weave trace model:
 ──────────────────────────────────────────────────────────────────
-📦 stage_research_1                       ← independent root call for human review
+📦 research_run_1                       ← independent root call for human review
   └─ ResearcherAgent                      ← agent span for the tool investigation
       ├─ openai.responses.create          ← model decides next action
       ├─ search_web                       ← configured search backend tool
       ├─ fetch_github_metadata_tool       ← GitHub metadata lookup
       └─ save_tool_profile_tool           ← accepted profile persistence
-📦 stage_research_2                       ← one root call per tool
-📦 stage_research_3                       ← rejected tools are reviewable too
+📦 research_run_2                       ← one root call per tool
+📦 research_run_3                       ← rejected tools are reviewable too
 ...
 
 _profile_runs.jsonl links the day/run_id to each tool's workflow_name, agent_trace_id, and weave_call_id.
@@ -182,7 +182,7 @@ Flags:
 
 ### Ingest Weave feedback
 
-After annotating per-tool `stage_research_<i>` calls in Weave (e.g. via a `D{YYYYMMDD}_Research` annotation queue):
+After annotating per-tool `research_run_<i>` calls in Weave (e.g. via a `D{YYYYMMDD}_Research` annotation queue):
 
 ```bash
 uv run autoresearch-researcher feedback ingest --day 2026-05-19
@@ -220,11 +220,11 @@ Every non-dry run publishes the instruction file to Weave as `autoresearch-resea
 
 ### Annotation queue review fields
 
-When adding traces to a Weave Annotation Queue, select the reviewer-friendly output fields from the `stage_research_<i>` root call:
+When adding traces to a Weave Annotation Queue, select the reviewer-friendly output fields from the `research_run_<i>` root call:
 
 | Stage trace | Recommended output fields |
 |-------------|---------------------------|
-| `stage_research_<i>` | `profile_review_markdown`, `verdict`, `tool_name`, `primary_url`, `rejection_reason`, `autonomy_level`, `domains`, `key_limitations`, `profile_path`, `prompt_ref` |
+| `research_run_<i>` | `profile_review_markdown`, `verdict`, `tool_name`, `primary_url`, `rejection_reason`, `autonomy_level`, `domains`, `key_limitations`, `profile_path`, `prompt_ref` |
 
 These fields let a reviewer judge the run from the queue without expanding the full trace tree.
 
