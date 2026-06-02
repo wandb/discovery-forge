@@ -1,9 +1,8 @@
 """ResearcherAgent: the single agent that discovers AND profiles one tool per run.
 
-Each invocation is asked to find ONE experiment-automation tool that is not yet
-covered (an exclusion list is passed at runtime), verify it, and either save a
-canonical tool profile or reject it as out of scope. When it cannot find any new
-in-scope tool it calls ``report_no_new_tool`` so the orchestrator can stop early.
+Each invocation is asked to find ONE candidate that is not yet covered (an
+exclusion list is passed at runtime), verify it, and either save a canonical
+profile, reject it, or report that no new finding was found for this attempt.
 """
 
 import json
@@ -203,7 +202,7 @@ def build_researcher_agent(
     def save_rejected_profile_tool(
         slug: str,
         name: str,
-        rejection_reason: str,
+        verdict_reason: str,
         url: str | None = None,
         github_url: str | None = None,
         paper_url: str | None = None,
@@ -217,20 +216,20 @@ def build_researcher_agent(
             github_url=github_url,
             paper_url=paper_url,
             project_url=project_url,
-            rejection_reason=rejection_reason,
+            verdict_reason=verdict_reason,
         )
         rejected_file.parent.mkdir(parents=True, exist_ok=True)
         with rejected_file.open("a") as f:
             f.write(json.dumps(rejected.model_dump()) + "\n")
         primary_url = github_url or project_url or paper_url or url or "unknown"
-        return f"Rejected: {name} ({primary_url}) — {rejection_reason}"
+        return f"Rejected: {name} ({primary_url}) — {verdict_reason}"
 
     @function_tool
     def report_no_new_tool(reason: str) -> str:
-        """Signal that no new in-scope tool could be found this run, ending the loop."""
+        """Signal that no new useful finding was found for this attempt."""
         no_new_file.parent.mkdir(parents=True, exist_ok=True)
         with no_new_file.open("a") as f:
-            f.write(json.dumps({"reason": reason}) + "\n")
+            f.write(json.dumps({"verdict_reason": reason}) + "\n")
         return f"No new tool found: {reason}"
 
     instructions = instructions_override or load_instructions("researcher")

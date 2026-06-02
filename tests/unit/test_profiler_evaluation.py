@@ -18,7 +18,7 @@ def test_scope_decision_scorer_reports_mismatch():
     from autoresearch_researcher.tools.evaluation import scope_decision_scorer
 
     score = scope_decision_scorer(
-        {"scope_status": "accepted", "rejection_reason": None},
+        {"scope_status": "accepted", "verdict_reason": None},
         "rejected",
     )
 
@@ -27,13 +27,13 @@ def test_scope_decision_scorer_reports_mismatch():
     assert score["observed"] == "accepted"
 
 
-def test_profile_quality_scorer_scores_rejection_reason():
+def test_profile_quality_scorer_scores_verdict_reason():
     from autoresearch_researcher.tools.evaluation import profile_quality_scorer
 
     score = profile_quality_scorer(
         {
             "scope_status": "rejected",
-            "rejection_reason": "Rejected as out of scope: this is a curated resource list, not a tool.",
+            "verdict_reason": "Rejected as out of scope: this is a curated resource list, not a tool.",
         },
         "rejected",
         "out_of_scope",
@@ -129,14 +129,14 @@ def test_read_researcher_output_prefers_rejected_profile(tmp_path):
     rejected = {
         "slug": "tool-a",
         "name": "Tool A",
-        "rejection_reason": "Rejected as out of scope.",
+        "verdict_reason": "Rejected as out of scope.",
     }
     (tmp_path / "_rejected_profiles.jsonl").write_text(json.dumps(rejected) + "\n")
 
     output = _read_researcher_output(tmp_path)
 
     assert output["scope_status"] == "rejected"
-    assert output["rejection_reason"] == "Rejected as out of scope."
+    assert output["verdict_reason"] == "Rejected as out of scope."
 
 
 def test_researcher_eval_predict_fn_returns_saved_profile(tmp_path):

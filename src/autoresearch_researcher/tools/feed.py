@@ -164,6 +164,7 @@ def _profile_to_item(
     source_updated_at = _known_string(profile.get("source_updated_at")) or _known_string(
         profile.get("last_commit")
     )
+    summary = _item_summary(profile, fallback_description=page_description)
     item = {
         "schemaVersion": 1,
         "id": item_id,
@@ -176,7 +177,7 @@ def _profile_to_item(
             "siteName": _site_name(canonical_url),
         },
         "title": profile.get("name") or item_id,
-        "summary": page_description,
+        "summary": summary,
         "tags": _tags(profile),
         "pagePublishedAt": page_published_at,
         "sourceUpdatedAt": source_updated_at,
@@ -411,6 +412,83 @@ def _summary(profile: dict[str, Any]) -> str:
         if paragraph and not paragraph.startswith("#"):
             return paragraph.replace("\n", " ")
     return str(profile.get("autonomy_rationale") or profile.get("name") or "No summary available.")
+
+
+def _item_summary(profile: dict[str, Any], *, fallback_description: str) -> str:
+    descriptor = _summary_descriptor(profile)
+    domain = _summary_domain(profile)
+    action = _summary_action(profile) or _clean_summary_text(fallback_description)
+    article = "An" if descriptor[:1].lower() in {"a", "e", "i", "o", "u"} else "A"
+    return f"{article} {descriptor} for {domain} that {action}."
+
+
+def _summary_descriptor(profile: dict[str, Any]) -> str:
+    interface = str(profile.get("interface") or "").lower()
+    if any(token in interface for token in ("curated", "list", "directory", "survey")):
+        return "curated reference repository"
+    if "framework" in interface:
+        return "framework"
+    if "platform" in interface:
+        return "platform"
+    if "cli" in interface:
+        return "CLI tool"
+    if "library" in interface or "lib" in interface:
+        return "library"
+    if "agent" in interface:
+        return "agentic system"
+    if "github" in interface or "repository" in interface:
+        return "open-source project"
+    return "AI system"
+
+
+def _summary_domain(profile: dict[str, Any]) -> str:
+    domains = profile.get("domains")
+    domain = domains[0] if isinstance(domains, list) and domains else "iterative AI"
+    text = str(domain).strip()
+    if text.lower() == "ml":
+        return "ML workflows"
+    if text.lower().endswith(("workflow", "workflows", "automation")):
+        return text
+    return f"{text} workflows"
+
+
+def _summary_action(profile: dict[str, Any]) -> str | None:
+    source = _known_string(profile.get("autonomy_rationale")) or _summary(profile)
+    text = _clean_summary_text(source)
+    sentences = [part.strip() for part in re.split(r"(?<=[.!?])\s+", text) if part.strip()]
+    if not sentences:
+        return None
+    sentence = next(
+        (
+            item
+            for item in sentences
+            if not item.lower().startswith(("this is ", "it is ", "the repository is "))
+        ),
+        sentences[0],
+    )
+    sentence = re.sub(
+        r"^(it|this system|the system|the project|the repository)\s+",
+        "",
+        sentence,
+        flags=re.IGNORECASE,
+    )
+    sentence = re.sub(
+        r"^[A-Z][A-Za-z0-9_. -]{0,80}\s+is described as\s+",
+        "provides ",
+        sentence,
+    )
+    sentence = re.sub(
+        r"^[A-Z][A-Za-z0-9_. -]{0,80}\s+is\s+(a|an|the)\s+",
+        r"provides \1 ",
+        sentence,
+    )
+    sentence = sentence.strip().rstrip(".")
+    return sentence[:1].lower() + sentence[1:] if sentence else None
+
+
+def _clean_summary_text(value: str) -> str:
+    text = re.sub(r"^\*\*Autonomy level\*\*:.*?—\s*", "", value.strip())
+    return re.sub(r"\s+", " ", text).strip().rstrip(".")
 
 
 def _known_string(value: Any) -> str | None:

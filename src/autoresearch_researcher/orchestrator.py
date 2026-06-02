@@ -84,6 +84,7 @@ class AutoresearchWeaveTracingProcessor(WeaveTracingProcessor):
         self._hidden_span_parent_calls = {}
         self._accepted_profiles: dict[str, dict[str, Any]] = {}
         self._rejected_profiles: dict[str, dict[str, Any]] = {}
+        self._no_new_results: dict[str, dict[str, Any]] = {}
 
     def on_trace_start(self, trace) -> None:
         super().on_trace_start(trace)
@@ -127,6 +128,7 @@ class AutoresearchWeaveTracingProcessor(WeaveTracingProcessor):
         self._ended_traces.discard(tid)
         self._accepted_profiles.pop(tid, None)
         self._rejected_profiles.pop(tid, None)
+        self._no_new_results.pop(tid, None)
 
     def _get_parent_call(self, span):
         parent_span_id = getattr(span, "parent_id", None)
@@ -177,7 +179,11 @@ class AutoresearchWeaveTracingProcessor(WeaveTracingProcessor):
 
     def _research_display_name(self, trace_id: str) -> str | None:
         """Display name for a finished research trace, if the tool is known."""
-        profile = self._accepted_profiles.get(trace_id) or self._rejected_profiles.get(trace_id)
+        profile = (
+            self._accepted_profiles.get(trace_id)
+            or self._rejected_profiles.get(trace_id)
+            or self._no_new_results.get(trace_id)
+        )
         if not profile:
             return None
         name = profile.get("name") or profile.get("slug")
@@ -201,6 +207,8 @@ class AutoresearchWeaveTracingProcessor(WeaveTracingProcessor):
             return profile_review_output(self._accepted_profiles[trace_id], status="accepted")
         if trace_id in self._rejected_profiles:
             return profile_review_output(self._rejected_profiles[trace_id], status="rejected")
+        if trace_id in self._no_new_results:
+            return profile_review_output(self._no_new_results[trace_id], status="no_new")
         return profile_review_output({}, status="unknown")
 
     def _collect_review_function_call(self, span) -> None:
@@ -214,6 +222,12 @@ class AutoresearchWeaveTracingProcessor(WeaveTracingProcessor):
             self._accepted_profiles[trace_id] = payload
         elif tool_name == "save_rejected_profile_tool":
             self._rejected_profiles[trace_id] = payload
+        elif tool_name == "report_no_new_tool":
+            self._no_new_results[trace_id] = {
+                "slug": "no-new-finding",
+                "name": "No new finding",
+                "verdict_reason": payload.get("reason"),
+            }
 
 
 def get_agent_trace_call_metadata(trace_id: str) -> tuple[str | None, str | None]:
@@ -281,15 +295,19 @@ def update_metadata_counts(
     profiled_count: int,
     accepted_count: int,
     rejected_count: int,
+    no_new_count: int = 0,
+    attempted_count: int | None = None,
 ) -> None:
     """Merge high-level daily trace counters into run_metadata.json."""
     data: dict[str, Any] = {}
     if metadata_path.exists():
         data = json.loads(metadata_path.read_text())
     data["discovery_count"] = discovery_count
+    data["attempted_count"] = attempted_count if attempted_count is not None else discovery_count
     data["profiled_count"] = profiled_count
     data["accepted_count"] = accepted_count
     data["rejected_count"] = rejected_count
+    data["no_new_count"] = no_new_count
     metadata_path.write_text(json.dumps(data, indent=2))
 
 
@@ -332,6 +350,7 @@ def profile_review_output(profile: dict[str, Any], *, status: str) -> dict[str, 
         or profile.get("url")
         or "unknown"
     )
+    verdict_reason = profile.get("verdict_reason")
     tags = []
     if status == "accepted":
         tags = feed_metadata_for_profile(profile)["feed_tags"]
@@ -341,7 +360,7 @@ def profile_review_output(profile: dict[str, Any], *, status: str) -> dict[str, 
         "tool_name": profile.get("name") or "unknown",
         "slug": slug,
         "primary_url": primary_url,
-        "rejection_reason": profile.get("rejection_reason"),
+        "verdict_reason": verdict_reason,
         "autonomy_level": profile.get("autonomy_level"),
         "domains": profile.get("domains"),
         "github_url": profile.get("github_url"),
@@ -385,7 +404,13 @@ def render_profile_review_markdown(profile: dict[str, Any], *, status: str) -> s
     if status == "rejected":
         lines.extend([
             "## Scope Decision",
-            profile.get("rejection_reason") or "No rejection reason captured.",
+            profile.get("verdict_reason") or "No verdict reason captured.",
+            "",
+        ])
+    elif status == "no_new":
+        lines.extend([
+            "## Scope Decision",
+            profile.get("verdict_reason") or "No verdict reason captured.",
             "",
         ])
     elif status == "accepted":
@@ -541,7 +566,7 @@ def render_research_prompt(
         f"{recency_hint} "
         "Call is_known_tool(url) before committing to a candidate. "
         "If in scope, save sources then call save_tool_profile_tool. "
-        "If out of scope, call save_rejected_profile_tool with a clear reason. "
+        "If out of scope, call save_rejected_profile_tool with a clear verdict_reason. "
         "If you cannot find any new in-scope tool, call report_no_new_tool."
     )
 
@@ -572,7 +597,7 @@ def _iteration_outcome(
             "status": "accepted",
             "slug": row.get("slug") or name_to_slug(row.get("name", "")),
             "name": row.get("name"),
-            "rejection_reason": None,
+            "verdict_reason": None,
             "stop": False,
         }
     for row in reversed(updated_rows[updated_before:]):
@@ -580,7 +605,7 @@ def _iteration_outcome(
             "status": "accepted",
             "slug": row.get("slug") or name_to_slug(row.get("name", "")),
             "name": row.get("name"),
-            "rejection_reason": None,
+            "verdict_reason": None,
             "stop": False,
         }
     for row in reversed(rejected_rows[rejected_before:]):
@@ -594,11 +619,18 @@ def _iteration_outcome(
                 or row.get("paper_url")
                 or row.get("url")
             ),
-            "rejection_reason": row.get("rejection_reason"),
+            "verdict_reason": row.get("verdict_reason"),
             "stop": False,
         }
     if no_new_rows[no_new_before:]:
-        return {"status": "no_new", "stop": True}
+        row = no_new_rows[-1]
+        return {
+            "status": "no_new",
+            "slug": "no-new-finding",
+            "name": "No new finding",
+            "verdict_reason": row.get("verdict_reason"),
+            "stop": False,
+        }
     return {"status": "unknown", "stop": True}
 
 
@@ -655,6 +687,8 @@ async def run_briefing(
     profiled_count = 0
     accepted_count = 0
     rejected_count = 0
+    no_new_count = 0
+    attempted_count = 0
 
     registry_dir = output_dir.parent / "_registry"
     registry = ToolRegistry.load(registry_dir)
@@ -674,6 +708,8 @@ async def run_briefing(
             profiled_count=_DRY_RUN_TOOL_COUNT,
             accepted_count=_DRY_RUN_TOOL_COUNT,
             rejected_count=0,
+            no_new_count=0,
+            attempted_count=_DRY_RUN_TOOL_COUNT,
         )
         update_metadata_costs(metadata_path, 0.0, 0, 0)
         build_feed_output(output_dir, registry=None, day=day)
@@ -747,8 +783,9 @@ async def run_briefing(
                 rejected_before=rejected_before,
                 no_new_before=no_new_before,
             )
+            attempted_count += 1
 
-            if outcome["status"] in ("accepted", "rejected"):
+            if outcome["status"] in ("accepted", "rejected", "no_new"):
                 call_id, trace_url = get_agent_trace_call_metadata(trace_id)
                 url = outcome.get("url")
                 if outcome["status"] == "accepted":
@@ -760,7 +797,7 @@ async def run_briefing(
                     "name": outcome.get("name"),
                     "url": url,
                     "status": outcome["status"],
-                    "rejection_reason": outcome.get("rejection_reason"),
+                    "verdict_reason": outcome.get("verdict_reason"),
                     "agent_trace_id": trace_id,
                     "workflow_name": workflow_name,
                     "weave_call_id": call_id,
@@ -772,11 +809,14 @@ async def run_briefing(
                     "completion_tokens": usage[1],
                     "cost_usd": usage[2],
                 })
-                profiled_count += 1
                 if outcome["status"] == "accepted":
+                    profiled_count += 1
                     accepted_count += 1
-                else:
+                elif outcome["status"] == "rejected":
+                    profiled_count += 1
                     rejected_count += 1
+                else:
+                    no_new_count += 1
 
             budget.add(usage[2])
 
@@ -791,10 +831,12 @@ async def run_briefing(
     finally:
         update_metadata_counts(
             metadata_path,
-            discovery_count=profiled_count,
+            discovery_count=attempted_count,
             profiled_count=profiled_count,
             accepted_count=accepted_count,
             rejected_count=rejected_count,
+            no_new_count=no_new_count,
+            attempted_count=attempted_count,
         )
         if metadata_path.exists():
             update_metadata_costs(metadata_path, total_cost, prompt_tokens, completion_tokens)
@@ -884,7 +926,7 @@ def _write_dry_run_outputs(
             "name": name,
             "url": f"https://github.com/example/tool-{i}",
             "status": "accepted",
-            "rejection_reason": None,
+            "verdict_reason": None,
             "agent_trace_id": None,
             "workflow_name": f"research_run_{i + 1}",
             "weave_call_id": None,

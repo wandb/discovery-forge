@@ -198,12 +198,12 @@ def test_profile_review_output_for_rejected_profile():
         "slug": "tool-a",
         "name": "Tool A",
         "url": "https://example.com/tool-a",
-        "rejection_reason": "Curated list only.",
+        "verdict_reason": "Curated list only.",
     }, status="rejected")
 
     assert output["verdict"] == "rejected"
     assert output["primary_url"] == "https://example.com/tool-a"
-    assert output["rejection_reason"] == "Curated list only."
+    assert output["verdict_reason"] == "Curated list only."
     assert output["tags"] == []
     assert "feed_item_id" not in output
     assert "feed_item_path" not in output
@@ -318,6 +318,29 @@ def test_trace_end_skips_relabel_when_no_profile(monkeypatch):
     assert "name" not in renamed
 
 
+def test_no_new_tool_call_outputs_no_new_verdict():
+    from agents.tracing import FunctionSpanData
+
+    from autoresearch_researcher.orchestrator import AutoresearchWeaveTracingProcessor
+
+    processor = AutoresearchWeaveTracingProcessor()
+    span = SimpleNamespace(
+        trace_id="trace-1",
+        span_data=FunctionSpanData(
+            name="report_no_new_tool",
+            input=json.dumps({"reason": "nothing useful found"}),
+            output="No new tool found",
+        ),
+    )
+
+    processor._collect_review_function_call(span)
+    output = processor._research_review_output_for_trace("trace-1")
+
+    assert output["verdict"] == "no_new"
+    assert output["verdict_reason"] == "nothing useful found"
+    assert "nothing useful found" in output["profile_review_markdown"]
+
+
 def test_parse_tool_input_accepts_json_string():
     from autoresearch_researcher.orchestrator import parse_tool_input
 
@@ -339,20 +362,21 @@ def test_iteration_outcome_detects_accepted_rejected_and_no_new(tmp_path):
     assert accepted["stop"] is False
 
     (tmp_path / "_rejected_profiles.jsonl").write_text(
-        json.dumps({"slug": "rejected-tool", "name": "Rejected Tool", "rejection_reason": "Deep research only"}) + "\n"
+        json.dumps({"slug": "rejected-tool", "name": "Rejected Tool", "verdict_reason": "Deep research only"}) + "\n"
     )
     rejected = _iteration_outcome(
         tmp_path, new_before=1, updated_before=0, rejected_before=0, no_new_before=0
     )
     assert rejected["status"] == "rejected"
-    assert rejected["rejection_reason"] == "Deep research only"
+    assert rejected["verdict_reason"] == "Deep research only"
 
-    (tmp_path / "_no_new_tool.jsonl").write_text(json.dumps({"reason": "nothing left"}) + "\n")
+    (tmp_path / "_no_new_tool.jsonl").write_text(json.dumps({"verdict_reason": "nothing left"}) + "\n")
     no_new = _iteration_outcome(
         tmp_path, new_before=1, updated_before=0, rejected_before=1, no_new_before=0
     )
     assert no_new["status"] == "no_new"
-    assert no_new["stop"] is True
+    assert no_new["verdict_reason"] == "nothing left"
+    assert no_new["stop"] is False
 
 
 def test_build_exclusion_block_lists_registry_and_rejections(tmp_path):
@@ -382,9 +406,11 @@ async def test_dry_run_writes_profiles_runs_and_feed(tmp_path):
     )
 
     metadata = json.loads((tmp_path / "run_metadata.json").read_text())
+    assert metadata["attempted_count"] == 3
     assert metadata["profiled_count"] == 3
     assert metadata["accepted_count"] == 3
     assert metadata["rejected_count"] == 0
+    assert metadata["no_new_count"] == 0
     assert metadata["search_backend"] == "serper"
     assert metadata["prompt_refs"] == {"researcher": None}
     assert set(metadata["prompt_hashes"]) == {"researcher"}

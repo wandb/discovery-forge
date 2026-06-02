@@ -187,9 +187,9 @@ def test_rejected_profile_schema():
         slug="deep-search-tool",
         name="Deep Search Tool",
         url="https://example.com/deep-search-tool",
-        rejection_reason="Only does web search and summarization, no experiment execution",
+        verdict_reason="Only does web search and summarization, no experiment execution",
     )
-    assert r.rejection_reason
+    assert r.verdict_reason
     assert r.url == "https://example.com/deep-search-tool"
 
 

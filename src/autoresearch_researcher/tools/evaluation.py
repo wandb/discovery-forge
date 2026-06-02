@@ -64,7 +64,7 @@ def scope_decision_scorer(
         "passed": observed == expected_scope_status,
         "expected": expected_scope_status,
         "observed": observed,
-        "reason": None if observed == expected_scope_status else output.get("rejection_reason"),
+        "reason": None if observed == expected_scope_status else output.get("verdict_reason"),
     }
 
 
@@ -87,15 +87,15 @@ def profile_quality_scorer(
         }
 
     if expected_scope_status == "rejected":
-        reason = str(output.get("rejection_reason") or "")
+        reason = str(output.get("verdict_reason") or "")
         has_reason = len(reason.strip()) >= 20
-        category_match = _rejection_reason_matches_category(reason, expected_issue_category)
+        category_match = _verdict_reason_matches_category(reason, expected_issue_category)
         return {
             "passed": has_reason and category_match,
-            "has_rejection_reason": has_reason,
+            "has_verdict_reason": has_reason,
             "category_match": category_match,
             "expected_issue_category": expected_issue_category,
-            "rejection_reason": reason,
+            "verdict_reason": reason,
         }
 
     profile = output.get("profile") if isinstance(output.get("profile"), dict) else {}
@@ -175,7 +175,7 @@ def _read_researcher_output(output_dir: Path) -> dict[str, Any]:
     if rejected is not None:
         return {
             "scope_status": "rejected",
-            "rejection_reason": rejected.get("rejection_reason"),
+            "verdict_reason": rejected.get("verdict_reason"),
             "profile": None,
         }
 
@@ -185,13 +185,13 @@ def _read_researcher_output(output_dir: Path) -> dict[str, Any]:
         profile = _read_profile_frontmatter(profiles[-1])
         return {
             "scope_status": "accepted",
-            "rejection_reason": None,
+            "verdict_reason": None,
             "profile": profile,
         }
 
     return {
         "scope_status": "unknown",
-        "rejection_reason": "Profiler did not save or reject a profile.",
+        "verdict_reason": "Profiler did not save or reject a profile.",
         "profile": None,
     }
 
@@ -231,7 +231,7 @@ def _is_missing_profile_value(value: Any) -> bool:
     return False
 
 
-def _rejection_reason_matches_category(reason: str, category: str | None) -> bool:
+def _verdict_reason_matches_category(reason: str, category: str | None) -> bool:
     if category is None:
         return True
     text = reason.lower()

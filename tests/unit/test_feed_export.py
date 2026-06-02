@@ -12,7 +12,7 @@ def _write_profile(tools_dir: Path, *, slug: str = "tool-a") -> None:
         "license": "MIT",
         "domains": ["ml"],
         "autonomy_level": "Scientist",
-        "autonomy_rationale": "Runs experiment loops.",
+        "autonomy_rationale": "Designs experiments, edits code, runs training, and iterates on results.",
         "interface": "Python lib",
         "resource_requirements": "single GPU",
         "last_commit": "2026-05-01T00:00:00Z",
@@ -97,7 +97,10 @@ def test_build_feed_output_writes_manifest_items_and_raw(tmp_path):
         "siteName": "GitHub",
     }
     assert item_file["title"] == "Tool A"
-    assert item_file["summary"] == "Source description from GitHub."
+    assert item_file["summary"] == (
+        "A library for ML workflows that designs experiments, edits code, runs training, "
+        "and iterates on results."
+    )
     assert item_file["tags"] == ["academic", "github"]
     assert item_file["pagePublishedAt"] == "2026-01-02T00:00:00Z"
     assert item_file["sourceUpdatedAt"] == "2026-05-02T00:00:00Z"
@@ -257,6 +260,67 @@ def test_build_feed_output_uses_generated_at_only_when_page_published_unknown(tm
     item_file = json.loads((day_dir / "items" / "tool-a.json").read_text())
     assert item_file["pagePublishedAt"] == "2026-05-28T00:05:00+00:00"
     assert item_file["sourceUpdatedAt"] is None
+
+
+def test_build_feed_output_summarizes_curated_repository_as_reference(tmp_path):
+    from autoresearch_researcher.tools.feed import build_feed_output
+
+    day_dir = tmp_path / "2026-05-28"
+    day_dir.mkdir()
+    _bootstrap_day_dir(day_dir)
+
+    profile_path = day_dir / "tools" / "tool-a.md"
+    profile = yaml.safe_load(profile_path.read_text().split("---", 2)[1])
+    profile["domains"] = ["agent memory"]
+    profile["interface"] = "GitHub repository / curated paper list"
+    profile["autonomy_rationale"] = (
+        "This is a curated technical repository for agent memory rather than an execution engine. "
+        "It organizes research on persistent memory, context management, and learning from experience."
+    )
+    profile_path.write_text(
+        "---\n"
+        + yaml.dump(profile, sort_keys=False)
+        + "---\n\n# Tool A\n\nTool A automates ML experiments.\n"
+    )
+
+    build_feed_output(day_dir, registry=None, day="2026-05-28", source_sha="abc123")
+
+    item_file = json.loads((day_dir / "items" / "tool-a.json").read_text())
+    assert item_file["summary"] == (
+        "A curated reference repository for agent memory workflows that organizes research "
+        "on persistent memory, context management, and learning from experience."
+    )
+
+
+def test_build_feed_output_rewrites_named_description_into_action_phrase(tmp_path):
+    from autoresearch_researcher.tools.feed import build_feed_output
+
+    day_dir = tmp_path / "2026-05-28"
+    day_dir.mkdir()
+    _bootstrap_day_dir(day_dir)
+
+    profile_path = day_dir / "tools" / "tool-a.md"
+    profile = yaml.safe_load(profile_path.read_text().split("---", 2)[1])
+    profile["domains"] = ["autonomous agents"]
+    profile["interface"] = "GitHub repository / research code"
+    profile["autonomy_rationale"] = (
+        "AgentEvolver is described as an end-to-end self-evolving training framework "
+        "that unifies self-questioning and self-navigating."
+    )
+    profile_path.write_text(
+        "---\n"
+        + yaml.dump(profile, sort_keys=False)
+        + "---\n\n# Tool A\n\nTool A automates ML experiments.\n"
+    )
+
+    build_feed_output(day_dir, registry=None, day="2026-05-28", source_sha="abc123")
+
+    item_file = json.loads((day_dir / "items" / "tool-a.json").read_text())
+    assert item_file["summary"] == (
+        "An open-source project for autonomous agents workflows that provides an "
+        "end-to-end self-evolving training framework that unifies self-questioning "
+        "and self-navigating."
+    )
 
 
 def test_build_feed_output_dedupes_items_by_dedupe_key(tmp_path):

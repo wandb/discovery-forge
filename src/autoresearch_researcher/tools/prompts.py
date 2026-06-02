@@ -13,7 +13,7 @@ import weave
 INSTRUCTIONS_DIR = Path(__file__).parent.parent / "instructions"
 
 PROMPT_OBJECT_NAMES = {
-    "researcher": "autoresearch-researcher-instructions",
+    "researcher": "researcher_instructions",
 }
 
 

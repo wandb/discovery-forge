@@ -35,4 +35,4 @@ class RejectedProfile(BaseModel):
     github_url: str | None = None
     paper_url: str | None = None
     project_url: str | None = None
-    rejection_reason: str
+    verdict_reason: str

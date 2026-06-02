@@ -44,9 +44,9 @@ def test_publish_instruction_prompts_uses_registered_prompt_content(tmp_path, mo
 
     versions = prompts.publish_instruction_prompts(max_tools=3, instructions_dir=tmp_path)
 
-    assert published_names == ["autoresearch-researcher-instructions"]
+    assert published_names == ["researcher_instructions"]
     assert versions["researcher"].formatted_content == "Registered researcher prompt."
-    assert versions["researcher"].ref_uri == "weave:///entity/project/object/autoresearch-researcher-instructions:v1"
+    assert versions["researcher"].ref_uri == "weave:///entity/project/object/researcher_instructions:v1"
 
 
 def test_prompt_metadata_helpers_return_hashes_refs_and_contents(tmp_path):

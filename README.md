@@ -224,7 +224,7 @@ When adding traces to a Weave Annotation Queue, select the reviewer-friendly out
 
 | Stage trace | Recommended output fields |
 |-------------|---------------------------|
-| `research_run_<i>` | `profile_review_markdown`, `verdict`, `tool_name`, `primary_url`, `rejection_reason`, `autonomy_level`, `domains`, `key_limitations`, `profile_path`, `prompt_ref` |
+| `research_run_<i>` | `profile_review_markdown`, `verdict`, `tool_name`, `primary_url`, `verdict_reason`, `autonomy_level`, `domains`, `key_limitations`, `profile_path`, `prompt_ref` |
 
 These fields let a reviewer judge the run from the queue without expanding the full trace tree.
 

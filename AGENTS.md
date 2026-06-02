@@ -275,7 +275,7 @@ async def test_profiler_filters_out_deep_research():
         )
         result = await profile_candidate(candidate)
         assert result.is_rejected
-        assert "deep research" in result.rejection_reason.lower()
+ assert "deep research" in result.verdict_reason.lower()
 ```
 
 ### E2E tests
