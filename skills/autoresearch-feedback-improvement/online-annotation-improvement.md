@@ -59,6 +59,26 @@ Before planning changes, summarize:
 - representative call IDs or trace names
 - whether the evidence points to prompt changes, code changes, or both
 
+### Conversational Review Evidence
+
+Human review evidence is not limited to Weave feedback rows. If the user gives feedback in chat while reviewing traces, feed items, or generated artifacts, treat it as evidence too.
+
+Examples:
+
+- "X should also be listed"
+- "Search for X"
+- "This cookbook should be excluded"
+- "Awesome repos should be leads, not saved directly"
+- "This field is missing or wrong"
+- "The summary should sound like this example"
+
+When the user gives direct candidate or query feedback:
+
+- Preserve the exact candidate names, URLs, and phrases in the improvement plan.
+- Add a concrete prompt or query-pool change that would help the ResearcherAgent rediscover similar systems.
+- Do not only generalize the feedback into broad policy language.
+- Do not hardcode the candidate as a required output; use it as a query example, representative missed candidate, or source-priority hint.
+
 Common failure modes:
 
 - Rejected profiler outputs hide the candidate URL or source URLs.
@@ -66,6 +86,7 @@ Common failure modes:
 - Duplicate or already-known tools reappear because URL aliases are not canonicalized enough.
 - General AI-scientist tools are too broad when the user wants coding-agent/model-improvement examples.
 - Metadata incompleteness is treated as scope rejection instead of a separate completeness issue.
+- Missed candidate / search coverage gaps: feedback phrases like "should also be listed", "missed X", "why not include X", "search for X", or a concrete project URL/name indicate that the ResearcherAgent failed to search broadly enough. Extract the named candidates, source URLs, and suggested query angles separately from item-specific quality critique.
 
 ## 3. Plan Improvements
 
@@ -89,6 +110,9 @@ For each planned item, include:
 Planning rules:
 
 - If multiple categories apply, keep the implementation scoped to the smallest useful slice.
+- If feedback includes explicit instructions like "include/list/search for X" or "exclude Y", the plan must contain a direct corresponding action item. It may also include a generalized rule, but it must not drop the concrete example.
+- If a single feedback note contains both item-quality feedback and "should also include/list/search for X", split it into two plan items: one item-specific quality issue and one search coverage / missed-candidate issue.
+- For missed-candidate feedback, include the exact project names/URLs in the plan and add or revise Query Example Pool entries so future runs can rediscover similar systems.
 - Prompt-only changes may only edit `src/autoresearch_researcher/instructions/*.md`.
 - Code changes require a focused failing test first.
 - Do not create fallback behavior.

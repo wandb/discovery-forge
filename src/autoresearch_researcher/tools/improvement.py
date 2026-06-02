@@ -73,16 +73,17 @@ def render_proposer_input(
         "## Daily Context",
         f"- Profile runs: {len(context.profile_runs)}",
         f"- Rejected profiles: {len(context.rejected_profiles)}",
-        f"- Feedback events to review: {len(context.feedback_events)}",
+        f"- Feedback events to review: {len(_human_feedback_events(context.feedback_events))}",
         "",
         "## Human Feedback Events",
         "",
     ]
 
-    if not context.feedback_events:
+    human_events = _human_feedback_events(context.feedback_events)
+    if not human_events:
         lines.append("No feedback events were found. Produce a plan that recommends no changes.")
     else:
-        for idx, event in enumerate(context.feedback_events, start=1):
+        for idx, event in enumerate(human_events, start=1):
             lines.extend(_render_feedback_event(idx, event))
 
     lines.extend([
@@ -188,7 +189,7 @@ def propose_prompt_improvements(
         "day": day_dir.name,
         "plan_path": str(plan_path),
         "proposal_path": str(plan_path),
-        "feedback_event_count": len(context.feedback_events),
+        "feedback_event_count": len(_human_feedback_events(context.feedback_events)),
         "target_prompt_files": [
             f"src/autoresearch_researcher/instructions/{name}"
             for name in PROMPT_FILENAMES.values()
@@ -329,6 +330,17 @@ def _render_feedback_event(index: int, event: dict[str, Any]) -> list[str]:
         f"- Human feedback: {feedback_text}",
         "",
     ]
+
+
+def _human_feedback_events(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [event for event in events if _is_human_free_text_feedback(event)]
+
+
+def _is_human_free_text_feedback(event: dict[str, Any]) -> bool:
+    feedback = event.get("feedback", {})
+    feedback_type = str(feedback.get("feedback_type") or "")
+    payload = _feedback_payload(event)
+    return feedback_type.startswith("wandb.annotation.") and isinstance(payload.get("value"), str)
 
 
 def _feedback_payload(event: dict[str, Any]) -> dict[str, Any]:

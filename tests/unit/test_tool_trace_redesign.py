@@ -447,13 +447,20 @@ def test_feedback_ingest_writes_events_and_notes(tmp_path):
     }
     (tmp_path / "_profile_runs.jsonl").write_text(json.dumps(profile_run) + "\n")
 
-    feedback = SimpleNamespace(
-        id="fb-1",
-        feedback_type="wandb.annotation.profile_accuracy",
-        payload={"profile_accuracy": 3, "prompt_issue_type": "source_selection"},
-        call_id="call-123",
-    )
-    client = SimpleNamespace(get_feedback=lambda: [feedback])
+    feedback = {
+        "id": "fb-1",
+        "feedback_type": "wandb.annotation.profile_accuracy",
+        "payload": {"profile_accuracy": 3, "prompt_issue_type": "source_selection"},
+        "call_ref": "weave:///entity/project/call/call-123",
+        "scorer_tags": [],
+    }
+
+    class FakeServer:
+        def feedback_query(self, req):
+            assert req.project_id == "entity/project"
+            return SimpleNamespace(result=[feedback])
+
+    client = SimpleNamespace(server=FakeServer(), project_id="entity/project")
 
     events = ingest_feedback(tmp_path, client)
 

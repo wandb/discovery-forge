@@ -27,7 +27,10 @@ def load_profile_runs(day_dir: Path) -> list[dict[str, Any]]:
 def _feedback_to_dict(item: Any) -> dict[str, Any]:
     """Convert a Weave feedback object or dict into JSON-serializable data."""
     if isinstance(item, dict):
-        return item
+        data = dict(item)
+        if data.get("call_id") is None:
+            data["call_id"] = _call_id_from_feedback_ref(data)
+        return data
     data = {}
     for key in (
         "id",
@@ -45,7 +48,20 @@ def _feedback_to_dict(item: Any) -> dict[str, Any]:
         value = getattr(item, key, None)
         if value is not None:
             data[key] = value
+    if data.get("call_id") is None:
+        data["call_id"] = _call_id_from_feedback_ref(data)
     return data
+
+
+def _call_id_from_feedback_ref(feedback: dict[str, Any]) -> str | None:
+    for key in ("call_ref", "weave_ref", "runnable_ref"):
+        value = feedback.get(key)
+        if not isinstance(value, str):
+            continue
+        match = re.search(r"/call/([^/?#]+)", value)
+        if match:
+            return match.group(1)
+    return None
 
 
 def _feedback_matches_call(item: dict[str, Any], call_id: str) -> bool:
@@ -58,12 +74,30 @@ def _feedback_matches_call(item: dict[str, Any], call_id: str) -> bool:
 
 def collect_call_feedback(client: Any, call_id: str) -> list[dict[str, Any]]:
     """Fetch feedback rows for one Weave call ID."""
-    feedback_items = getattr(client, "get_feedback")()
+    feedback_items = query_feedback(client)
     return [
         _feedback_to_dict(item)
         for item in feedback_items
         if _feedback_matches_call(_feedback_to_dict(item), call_id)
     ]
+
+
+def query_feedback(client: Any) -> list[dict[str, Any]]:
+    """Fetch feedback rows through the trace server as dictionaries."""
+    server = getattr(client, "server", None)
+    project_id = _client_project_id(client)
+    if server is None or project_id is None:
+        raise RuntimeError("Weave client must expose server and project_id for feedback ingest.")
+
+    from weave.trace_server.trace_server_interface import FeedbackQueryReq
+
+    response = server.feedback_query(
+        FeedbackQueryReq(
+            project_id=project_id,
+            limit=10000,
+        )
+    )
+    return [_feedback_to_dict(item) for item in getattr(response, "result", [])]
 
 
 def annotation_target_prompt(feedback: dict[str, Any], day: str) -> str | None:
@@ -114,6 +148,7 @@ def ingest_feedback(day_dir: Path, client: Any) -> list[dict[str, Any]]:
     }
     seen_keys: set[str] = set()
     queue_name_cache: dict[str, str | None] = {}
+    all_feedback = query_feedback(client)
 
     def add_event(feedback: dict[str, Any], run: dict[str, Any] | None = None) -> None:
         feedback = enrich_feedback_with_queue_name(
@@ -143,11 +178,12 @@ def ingest_feedback(day_dir: Path, client: Any) -> list[dict[str, Any]]:
         call_id = run.get("weave_call_id")
         if not call_id:
             continue
-        for feedback in collect_call_feedback(client, call_id):
+        for feedback in all_feedback:
+            if not _feedback_matches_call(feedback, call_id):
+                continue
             add_event(feedback, run)
 
-    for item in getattr(client, "get_feedback")():
-        feedback = _feedback_to_dict(item)
+    for feedback in all_feedback:
         feedback = enrich_feedback_with_queue_name(
             client,
             feedback,

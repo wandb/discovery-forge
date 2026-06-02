@@ -116,7 +116,12 @@ def test_feedback_ingest_collects_day_scoped_research_annotations(tmp_path):
             call_id="old-call",
         ),
     ]
-    client = SimpleNamespace(get_feedback=lambda: feedback_items)
+    class FakeServer:
+        def feedback_query(self, req):
+            assert req.project_id == "entity/project"
+            return SimpleNamespace(result=feedback_items)
+
+    client = SimpleNamespace(server=FakeServer(), project_id="entity/project")
 
     events = ingest_feedback(tmp_path, client)
 
@@ -152,6 +157,40 @@ def test_render_proposer_input_includes_feedback_and_current_prompt(tmp_path):
     assert "Curated list. Should be rejected." in rendered
     assert "Current Prompt: researcher.md" in rendered
     assert "Seed researcher rules." in rendered
+
+
+def test_render_proposer_input_excludes_runnable_scorer_feedback(tmp_path):
+    from autoresearch_researcher.tools.improvement import (
+        load_feedback_context,
+        render_proposer_input,
+    )
+
+    instructions_dir = tmp_path / "instructions"
+    _bootstrap_instructions(instructions_dir)
+    day_dir = tmp_path / "2026-05-28"
+    _write_feedback(
+        day_dir,
+        [
+            _event(name="Human Case", note="Bad. Curated list."),
+            {
+                "day": "2026-05-28",
+                "name": "Scored Case",
+                "slug": "scored-case",
+                "feedback": {
+                    "feedback_type": "wandb.runnable.Profiler-quality-check",
+                    "payload": {"output": {"is_good": False, "failure_modes": ["wrong_accept"]}},
+                },
+            },
+        ],
+    )
+
+    context = load_feedback_context(day_dir)
+    rendered = render_proposer_input(context, instructions_dir=instructions_dir)
+
+    assert "Feedback events to review: 1" in rendered
+    assert "Bad. Curated list." in rendered
+    assert "Profiler-quality-check" not in rendered
+    assert "wrong_accept" not in rendered
 
 
 def test_render_proposer_input_handles_no_feedback(tmp_path):
