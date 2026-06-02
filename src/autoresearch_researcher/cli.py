@@ -86,6 +86,7 @@ def run(
     """Run the ResearcherAgent up to max_tools times and build the daily feed (items/* + manifest.json)."""
     day_dir = output_dir / day
     recency = None if since == RecencyOption.all else since.value
+    previous_manifest_path: Path | None = None
 
     if day_dir.exists() and not rerun:
         typer.echo(f"ERROR: {day_dir} already exists. Use --rerun to overwrite.", err=True)
@@ -94,6 +95,9 @@ def run(
     if day_dir.exists() and rerun:
         from autoresearch_researcher.orchestrator import backup_run_dir
         backup = backup_run_dir(day_dir)
+        candidate_manifest = backup / "manifest.json"
+        if candidate_manifest.exists():
+            previous_manifest_path = candidate_manifest
         typer.echo(f"Previous run backed up to: {backup}")
 
     day_dir.mkdir(parents=True, exist_ok=True)
@@ -108,6 +112,8 @@ def run(
         "search_backend": search_backend.value,
         "recency": recency,
     }
+    if previous_manifest_path is not None:
+        metadata["previous_manifest_path"] = str(previous_manifest_path)
     metadata_path = day_dir / "run_metadata.json"
     metadata_path.write_text(json.dumps(metadata, indent=2))
 

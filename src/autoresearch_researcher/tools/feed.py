@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 from datetime import datetime, timezone
@@ -43,6 +44,13 @@ def build_feed_output(
     metadata = _read_json(day_dir / "run_metadata.json")
     generated_at = _run_timestamp(metadata)
     resolved_source_sha = source_sha if source_sha is not None else _current_source_sha()
+    previous_manifest = _resolve_previous_manifest(day_dir, day=day, metadata=metadata)
+    resolved_previous_source_sha = (
+        previous_source_sha
+        if previous_source_sha is not None
+        else _manifest_source_sha(previous_manifest)
+    )
+    previous_items_by_key = _manifest_items_by_dedupe_key(previous_manifest)
 
     new_ids = _ids_from_jsonl(day_dir / "_new_candidates.jsonl")
     updated_ids = _ids_from_jsonl(day_dir / "_updated_tools.jsonl")
@@ -64,12 +72,13 @@ def build_feed_output(
             "dedupeKey": item["dedupeKey"],
             "path": f"items/{item['id']}.json",
             "contentHash": item["contentHash"],
-            "changeStatus": _change_status(item["id"], new_ids, updated_ids),
+            "changeStatus": _change_status(item, previous_items_by_key),
         })
     _remove_stale_item_files(items_dir, manifest_items)
 
     _write_raw_artifacts(day_dir)
 
+    removed_item_ids = _removed_item_ids(previous_items_by_key, manifest_items)
     manifest_new_ids = sorted(
         item["id"] for item in manifest_items if item["changeStatus"] == "new"
     )
@@ -83,20 +92,20 @@ def build_feed_output(
         "runDate": day,
         "cadence": "daily",
         "sourceSha": resolved_source_sha,
-        "previousSourceSha": previous_source_sha,
+        "previousSourceSha": resolved_previous_source_sha,
         "sourceRange": {
-            "fromShaExclusive": previous_source_sha,
+            "fromShaExclusive": resolved_previous_source_sha,
             "toShaInclusive": resolved_source_sha,
         },
         "generatedAt": generated_at,
         "publishedAt": generated_at,
         "updatedAt": generated_at,
-        "weaveTraceId": metadata.get("run_id"),
+        "weaveTraceId": _manifest_weave_trace_id(metadata),
         "items": manifest_items,
         "delta": {
             "newItemIds": manifest_new_ids,
             "updatedItemIds": manifest_updated_ids,
-            "removedItemIds": [],
+            "removedItemIds": removed_item_ids,
         },
     }
     manifest["manifestHash"] = stable_hash(manifest)
@@ -148,22 +157,29 @@ def _profile_to_item(
     canonical_url = _canonical_url(profile)
     domains = profile.get("domains") if isinstance(profile.get("domains"), list) else []
     limitations = profile.get("key_limitations") if isinstance(profile.get("key_limitations"), list) else []
+    page_title = _known_string(profile.get("page_title")) or profile.get("name") or item_id
+    page_description = _known_string(profile.get("page_description")) or _summary(profile)
+    page_image_url = _known_string(profile.get("page_image_url"))
+    page_published_at = _known_string(profile.get("page_published_at")) or generated_at
+    source_updated_at = _known_string(profile.get("source_updated_at")) or _known_string(
+        profile.get("last_commit")
+    )
     item = {
         "schemaVersion": 1,
         "id": item_id,
         "dedupeKey": dedupe_key_for_url(canonical_url, fallback_id=item_id),
         "canonicalUrl": canonical_url,
-        "pageTitle": profile.get("name") or item_id,
+        "pageTitle": page_title,
         "pageMetadata": {
-            "description": _summary(profile),
-            "image": None,
+            "description": page_description,
+            "image": page_image_url,
             "siteName": _site_name(canonical_url),
         },
         "title": profile.get("name") or item_id,
-        "summary": _summary(profile),
+        "summary": page_description,
         "tags": _tags(profile),
-        "pagePublishedAt": generated_at,
-        "sourceUpdatedAt": profile.get("last_commit") or generated_at,
+        "pagePublishedAt": page_published_at,
+        "sourceUpdatedAt": source_updated_at,
         "weaveTraceId": profile.get("weave_call_id") or weave_trace_id,
         "metadata": {
             "githubStars": profile.get("stars"),
@@ -205,6 +221,69 @@ def _read_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text())
 
 
+def _resolve_previous_manifest(day_dir: Path, *, day: str, metadata: dict[str, Any]) -> dict[str, Any] | None:
+    explicit_path = metadata.get("previous_manifest_path")
+    if isinstance(explicit_path, str) and explicit_path:
+        manifest = _read_json(Path(explicit_path))
+        if manifest:
+            return manifest
+
+    previous_manifest_path = _latest_previous_manifest_path(day_dir, day=day)
+    if previous_manifest_path is None:
+        return None
+    manifest = _read_json(previous_manifest_path)
+    return manifest or None
+
+
+def _latest_previous_manifest_path(day_dir: Path, *, day: str) -> Path | None:
+    if not day_dir.parent.exists():
+        return None
+    date_pattern = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+    candidates = []
+    for sibling in day_dir.parent.iterdir():
+        if not sibling.is_dir() or sibling == day_dir:
+            continue
+        if not date_pattern.match(sibling.name) or sibling.name >= day:
+            continue
+        manifest_path = sibling / "manifest.json"
+        if manifest_path.exists():
+            candidates.append(manifest_path)
+    if not candidates:
+        return None
+    return sorted(candidates, key=lambda path: path.parent.name)[-1]
+
+
+def _manifest_source_sha(manifest: dict[str, Any] | None) -> str | None:
+    if not manifest:
+        return None
+    value = manifest.get("sourceSha")
+    return value if isinstance(value, str) and value else None
+
+
+def _manifest_items_by_dedupe_key(manifest: dict[str, Any] | None) -> dict[str, dict[str, Any]]:
+    if not manifest:
+        return {}
+    items = manifest.get("items")
+    if not isinstance(items, list):
+        return {}
+    by_key = {}
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        key = item.get("dedupeKey")
+        if isinstance(key, str) and key:
+            by_key[key] = item
+    return by_key
+
+
+def _manifest_weave_trace_id(metadata: dict[str, Any]) -> str | None:
+    for key in ("weave_call_id", "weave_trace_id", "agent_trace_id"):
+        value = metadata.get(key)
+        if isinstance(value, str) and value:
+            return value
+    return None
+
+
 def _ids_from_jsonl(path: Path) -> set[str]:
     ids: set[str] = set()
     if not path.exists():
@@ -239,12 +318,26 @@ def _profile_item_id(profile: dict[str, Any]) -> str:
     return str(profile.get("slug") or _slugify(str(profile.get("name") or "unknown")))
 
 
-def _change_status(item_id: str, new_ids: set[str], updated_ids: set[str]) -> str:
-    if item_id in updated_ids:
-        return "updated"
-    if item_id in new_ids:
+def _change_status(item: dict[str, Any], previous_items_by_key: dict[str, dict[str, Any]]) -> str:
+    previous_item = previous_items_by_key.get(str(item.get("dedupeKey") or ""))
+    if previous_item is None:
         return "new"
+    if previous_item.get("contentHash") != item.get("contentHash"):
+        return "updated"
     return "unchanged"
+
+
+def _removed_item_ids(
+    previous_items_by_key: dict[str, dict[str, Any]],
+    manifest_items: list[dict[str, Any]],
+) -> list[str]:
+    current_keys = {str(item.get("dedupeKey") or "") for item in manifest_items}
+    removed_ids = [
+        str(item["id"])
+        for key, item in previous_items_by_key.items()
+        if key not in current_keys and item.get("id")
+    ]
+    return sorted(removed_ids)
 
 
 def _sort_profiles(profiles: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -318,6 +411,15 @@ def _summary(profile: dict[str, Any]) -> str:
         if paragraph and not paragraph.startswith("#"):
             return paragraph.replace("\n", " ")
     return str(profile.get("autonomy_rationale") or profile.get("name") or "No summary available.")
+
+
+def _known_string(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    stripped = value.strip()
+    if not stripped or stripped.lower() in {"unknown", "null", "none", "n/a"}:
+        return None
+    return stripped
 
 
 def _tags(profile: dict[str, Any]) -> list[str]:

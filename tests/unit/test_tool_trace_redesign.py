@@ -153,6 +153,11 @@ def test_profile_review_output_for_accepted_profile():
         "license": "MIT",
         "github_url": "https://github.com/example/tool-a",
         "key_limitations": ["Needs GPU"],
+        "page_title": "example/tool-a",
+        "page_description": "Source-provided description.",
+        "page_image_url": "https://example.com/og.png",
+        "page_published_at": "2025-01-15T00:00:00Z",
+        "source_updated_at": "2025-03-01T00:00:00Z",
         "source_ids": [1],
     }, status="accepted")
 
@@ -163,6 +168,11 @@ def test_profile_review_output_for_accepted_profile():
     assert output["paper_url"] is None
     assert output["project_url"] is None
     assert output["key_limitations"] == ["Needs GPU"]
+    assert output["page_title"] == "example/tool-a"
+    assert output["page_description"] == "Source-provided description."
+    assert output["page_image_url"] == "https://example.com/og.png"
+    assert output["page_published_at"] == "2025-01-15T00:00:00Z"
+    assert output["source_updated_at"] == "2025-03-01T00:00:00Z"
     assert output["tags"] == ["github"]
     for removed_field in [
         "source_ids",
@@ -177,6 +187,7 @@ def test_profile_review_output_for_accepted_profile():
     ]:
         assert removed_field not in output
     assert "Tool Profile Review: Tool A" in output["profile_review_markdown"]
+    assert "Page published: 2025-01-15T00:00:00Z" in output["profile_review_markdown"]
     assert "Needs GPU" in output["profile_review_markdown"]
 
 

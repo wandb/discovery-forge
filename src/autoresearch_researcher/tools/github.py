@@ -42,12 +42,18 @@ def fetch_github_metadata(github_url: str) -> Optional[dict]:
                     .get("committer", {})
                     .get("date", None)
                 )
+            source_updated_at = last_commit or data.get("pushed_at")
 
             return {
                 "stars": data.get("stargazers_count"),
                 "open_issues": data.get("open_issues_count"),
                 "last_commit": last_commit,
                 "license": data.get("license", {}).get("spdx_id") if data.get("license") else None,
+                "page_title": data.get("name") or data.get("full_name"),
+                "page_description": data.get("description"),
+                "page_image_url": data.get("open_graph_image_url"),
+                "page_published_at": data.get("created_at"),
+                "source_updated_at": source_updated_at,
             }
     except Exception:
         return None

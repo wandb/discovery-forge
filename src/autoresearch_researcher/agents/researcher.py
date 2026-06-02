@@ -155,6 +155,11 @@ def build_researcher_agent(
         paper_url: str | None,
         project_url: str | None,
         source_ids: list[int],
+        page_title: str | None = None,
+        page_description: str | None = None,
+        page_image_url: str | None = None,
+        page_published_at: str | None = None,
+        source_updated_at: str | None = None,
     ) -> str:
         """Save a profiled, in-scope tool. With registry: routes to
         _registry/profiles/{slug}.md; without registry: tools/{slug}.md."""
@@ -172,6 +177,11 @@ def build_researcher_agent(
             open_issues=open_issues,
             pricing_note=pricing_note,
             key_limitations=key_limitations,
+            page_title=page_title,
+            page_description=page_description,
+            page_image_url=page_image_url,
+            page_published_at=page_published_at,
+            source_updated_at=source_updated_at,
             github_url=github_url,
             paper_url=paper_url,
             project_url=project_url,

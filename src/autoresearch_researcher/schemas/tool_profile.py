@@ -17,6 +17,11 @@ class ToolProfile(BaseModel):
     open_issues: int | None
     pricing_note: str
     key_limitations: list[str]
+    page_title: str | None = None
+    page_description: str | None = None
+    page_image_url: str | None = None
+    page_published_at: str | None = None
+    source_updated_at: str | None = None
     github_url: str | None
     paper_url: str | None
     project_url: str | None

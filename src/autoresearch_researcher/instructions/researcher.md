@@ -65,6 +65,7 @@ When possible, vary your search angle across runs. If earlier tools in the exclu
 2. Before committing to a candidate URL, call `is_known_tool(url)`. If the response starts with `known:`, pick a different tool.
 3. Verify and collect metadata for the chosen tool:
    - Official project/paper/GitHub URL
+   - Source page title, source page description, source page image URL, original page publication date, and source-side update timestamp when available
    - License
    - GitHub activity when a GitHub repo exists (call `fetch_github_metadata_tool`)
    - Domain classification (one or more: `ml`, `chemistry`, `biology`, `materials`, `general`)
@@ -83,7 +84,7 @@ When possible, vary your search angle across runs. If earlier tools in the exclu
 
 ## Output
 
-- **In scope:** call `save_source_tool` for source URLs, then call `save_tool_profile_tool` with all collected fields. Set any unknown fields to `"unknown"` (string) or `null`. Missing metadata is not itself a scope rejection.
+- **In scope:** call `save_source_tool` for source URLs, then call `save_tool_profile_tool` with all collected fields. For GitHub repositories, copy the `page_title`, `page_description`, `page_image_url`, `page_published_at`, and `source_updated_at` fields returned by `fetch_github_metadata_tool` into the matching tool arguments. Set any unknown fields to `"unknown"` (string) or `null`. Missing metadata is not itself a scope rejection.
 - **Out of scope:** call `save_rejected_profile_tool` with a clear `rejection_reason` and reviewer-visible URLs.
 - **No new tool found:** call `report_no_new_tool(reason)`.
 

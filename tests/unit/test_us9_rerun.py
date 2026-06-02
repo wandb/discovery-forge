@@ -1,5 +1,6 @@
 """US9: Re-run safety (folder backup) and slug derivation tests."""
 
+import json
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -59,6 +60,8 @@ def test_rerun_cli_creates_backup_and_restarts(tmp_path):
         assert result.exit_code == 0, result.output
         backups = [d for d in tmp_path.iterdir() if "backup" in d.name]
         assert len(backups) >= 1
+        metadata = json.loads((day_dir / "run_metadata.json").read_text())
+        assert metadata["previous_manifest_path"] == str(backups[0] / "manifest.json")
 
 
 # ── slug derivation ───────────────────────────────────────────────────────────

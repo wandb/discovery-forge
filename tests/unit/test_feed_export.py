@@ -20,6 +20,11 @@ def _write_profile(tools_dir: Path, *, slug: str = "tool-a") -> None:
         "open_issues": 4,
         "pricing_note": "Free",
         "key_limitations": ["Needs GPU"],
+        "page_title": "example/tool-a",
+        "page_description": "Source description from GitHub.",
+        "page_image_url": "https://example.com/social-preview.png",
+        "page_published_at": "2026-01-02T00:00:00Z",
+        "source_updated_at": "2026-05-02T00:00:00Z",
         "github_url": "https://github.com/example/tool-a",
         "paper_url": "https://arxiv.org/abs/2601.00001",
         "project_url": None,
@@ -68,6 +73,12 @@ def test_build_feed_output_writes_manifest_items_and_raw(tmp_path):
     assert manifest["runDate"] == "2026-05-28"
     assert manifest["cadence"] == "daily"
     assert manifest["sourceSha"] == "abc123"
+    assert manifest["previousSourceSha"] is None
+    assert manifest["sourceRange"] == {
+        "fromShaExclusive": None,
+        "toShaInclusive": "abc123",
+    }
+    assert manifest["weaveTraceId"] is None
     assert manifest["delta"]["newItemIds"] == ["tool-a"]
     assert manifest["items"][0]["changeStatus"] == "new"
     assert manifest["manifestHash"]
@@ -79,9 +90,17 @@ def test_build_feed_output_writes_manifest_items_and_raw(tmp_path):
     assert item_file["id"] == "tool-a"
     assert item_file["canonicalUrl"] == "https://github.com/example/tool-a"
     assert item_file["dedupeKey"].startswith("url:")
+    assert item_file["pageTitle"] == "example/tool-a"
+    assert item_file["pageMetadata"] == {
+        "description": "Source description from GitHub.",
+        "image": "https://example.com/social-preview.png",
+        "siteName": "GitHub",
+    }
     assert item_file["title"] == "Tool A"
-    assert item_file["summary"] == "Tool A automates ML experiments."
+    assert item_file["summary"] == "Source description from GitHub."
     assert item_file["tags"] == ["academic", "github"]
+    assert item_file["pagePublishedAt"] == "2026-01-02T00:00:00Z"
+    assert item_file["sourceUpdatedAt"] == "2026-05-02T00:00:00Z"
     assert item_file["metadata"]["githubStars"] == 123
     assert item_file["metadata"]["keyLimitation"] == "Needs GPU"
     assert item_file["weaveTraceId"] == "call-tool-a"
@@ -129,6 +148,117 @@ def test_build_feed_output_hashes_are_stable(tmp_path):
     assert second_item["contentHash"] == first_item["contentHash"]
 
 
+def test_build_feed_output_computes_delta_against_previous_manifest(tmp_path):
+    from autoresearch_researcher.tools.feed import build_feed_output, dedupe_key_for_url
+
+    previous_day_dir = tmp_path / "2026-05-27"
+    previous_day_dir.mkdir()
+    previous_key = dedupe_key_for_url("https://github.com/example/tool-a", fallback_id="tool-a")
+    previous_manifest = {
+        "schemaVersion": 1,
+        "runId": "2026-05-27",
+        "runDate": "2026-05-27",
+        "cadence": "daily",
+        "sourceSha": "prevsha",
+        "items": [
+            {
+                "id": "tool-a",
+                "dedupeKey": previous_key,
+                "path": "items/tool-a.json",
+                "contentHash": "old-content-hash",
+                "changeStatus": "new",
+            },
+            {
+                "id": "removed-tool",
+                "dedupeKey": "url:removed",
+                "path": "items/removed-tool.json",
+                "contentHash": "removed-content-hash",
+                "changeStatus": "new",
+            },
+        ],
+    }
+    (previous_day_dir / "manifest.json").write_text(json.dumps(previous_manifest))
+
+    day_dir = tmp_path / "2026-05-28"
+    day_dir.mkdir()
+    _bootstrap_day_dir(day_dir)
+
+    manifest = build_feed_output(day_dir, registry=None, day="2026-05-28", source_sha="abc123")
+
+    assert manifest["previousSourceSha"] == "prevsha"
+    assert manifest["sourceRange"] == {
+        "fromShaExclusive": "prevsha",
+        "toShaInclusive": "abc123",
+    }
+    assert manifest["items"][0]["changeStatus"] == "updated"
+    assert manifest["delta"] == {
+        "newItemIds": [],
+        "updatedItemIds": ["tool-a"],
+        "removedItemIds": ["removed-tool"],
+    }
+
+
+def test_build_feed_output_uses_explicit_previous_manifest_path(tmp_path):
+    from autoresearch_researcher.tools.feed import build_feed_output, dedupe_key_for_url
+
+    backup_dir = tmp_path / "2026-05-28_backup_1"
+    backup_dir.mkdir()
+    previous_key = dedupe_key_for_url("https://github.com/example/tool-a", fallback_id="tool-a")
+    (backup_dir / "manifest.json").write_text(json.dumps({
+        "schemaVersion": 1,
+        "runId": "2026-05-28",
+        "runDate": "2026-05-28",
+        "cadence": "daily",
+        "sourceSha": "backupsha",
+        "items": [{
+            "id": "tool-a",
+            "dedupeKey": previous_key,
+            "path": "items/tool-a.json",
+            "contentHash": "old-content-hash",
+            "changeStatus": "new",
+        }],
+    }))
+
+    day_dir = tmp_path / "2026-05-28"
+    day_dir.mkdir()
+    _bootstrap_day_dir(day_dir)
+    metadata_path = day_dir / "run_metadata.json"
+    metadata = json.loads(metadata_path.read_text())
+    metadata["previous_manifest_path"] = str(backup_dir / "manifest.json")
+    metadata_path.write_text(json.dumps(metadata))
+
+    manifest = build_feed_output(day_dir, registry=None, day="2026-05-28", source_sha="abc123")
+
+    assert manifest["previousSourceSha"] == "backupsha"
+    assert manifest["sourceRange"]["fromShaExclusive"] == "backupsha"
+    assert manifest["delta"]["updatedItemIds"] == ["tool-a"]
+
+
+def test_build_feed_output_uses_generated_at_only_when_page_published_unknown(tmp_path):
+    from autoresearch_researcher.tools.feed import build_feed_output
+
+    day_dir = tmp_path / "2026-05-28"
+    day_dir.mkdir()
+    _bootstrap_day_dir(day_dir)
+
+    profile_path = day_dir / "tools" / "tool-a.md"
+    profile = yaml.safe_load(profile_path.read_text().split("---", 2)[1])
+    profile["page_published_at"] = None
+    profile["source_updated_at"] = None
+    profile["last_commit"] = None
+    profile_path.write_text(
+        "---\n"
+        + yaml.dump(profile, sort_keys=False)
+        + "---\n\n# Tool A\n\nTool A automates ML experiments.\n"
+    )
+
+    build_feed_output(day_dir, registry=None, day="2026-05-28", source_sha="abc123")
+
+    item_file = json.loads((day_dir / "items" / "tool-a.json").read_text())
+    assert item_file["pagePublishedAt"] == "2026-05-28T00:05:00+00:00"
+    assert item_file["sourceUpdatedAt"] is None
+
+
 def test_build_feed_output_dedupes_items_by_dedupe_key(tmp_path):
     from autoresearch_researcher.tools.feed import build_feed_output
 
@@ -146,8 +276,8 @@ def test_build_feed_output_dedupes_items_by_dedupe_key(tmp_path):
     assert len(dedupe_keys) == len(set(dedupe_keys))
     assert len(manifest["items"]) == 1
     assert manifest["items"][0]["id"] == "tool-a"
-    assert manifest["delta"]["newItemIds"] == []
-    assert manifest["delta"]["updatedItemIds"] == ["tool-a"]
+    assert manifest["delta"]["newItemIds"] == ["tool-a"]
+    assert manifest["delta"]["updatedItemIds"] == []
 
 
 def test_build_feed_output_does_not_use_source_sha_as_weave_trace_fallback(tmp_path):

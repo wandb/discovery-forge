@@ -166,6 +166,11 @@ def test_tool_profile_schema_fields():
         open_issues=10,
         pricing_note="Free",
         key_limitations=["Requires GPU"],
+        page_title="example/test-tool",
+        page_description="Source-provided repo description.",
+        page_image_url="https://example.com/og.png",
+        page_published_at="2024-12-31T00:00:00Z",
+        source_updated_at="2025-01-02T00:00:00Z",
         github_url="https://github.com/example/test-tool",
         paper_url=None,
         project_url=None,
@@ -173,6 +178,7 @@ def test_tool_profile_schema_fields():
     )
     assert p.slug == "test-tool"
     assert p.domains == ["ml"]
+    assert p.page_published_at == "2024-12-31T00:00:00Z"
 
 
 def test_rejected_profile_schema():
@@ -206,6 +212,11 @@ def test_save_tool_profile_writes_yaml_frontmatter(tmp_path):
         open_issues=45,
         pricing_note="Free",
         key_limitations=["Needs 8x A100"],
+        page_title="example/tool",
+        page_description="GitHub repository description.",
+        page_image_url=None,
+        page_published_at="2025-01-15T00:00:00Z",
+        source_updated_at="2025-03-01T00:00:00Z",
         github_url="https://github.com/example/tool",
         paper_url="https://arxiv.org/abs/2025.00001",
         project_url=None,
@@ -219,6 +230,8 @@ def test_save_tool_profile_writes_yaml_frontmatter(tmp_path):
     assert content.startswith("---")
     assert "slug: example-tool" in content
     assert "Apache 2.0" in content
+    assert "page_title: example/tool" in content
+    assert "page_published_at: '2025-01-15T00:00:00Z'" in content
 
 
 def test_fetch_github_metadata_signature():
@@ -226,6 +239,51 @@ def test_fetch_github_metadata_signature():
     import inspect
     sig = inspect.signature(fetch_github_metadata)
     assert "github_url" in sig.parameters
+
+
+def test_fetch_github_metadata_includes_source_page_fields():
+    from unittest.mock import MagicMock, patch
+
+    from autoresearch_researcher.tools.github import fetch_github_metadata
+
+    repo_response = MagicMock()
+    repo_response.json.return_value = {
+        "name": "tool-a",
+        "full_name": "example/tool-a",
+        "description": "Source-provided repo description.",
+        "created_at": "2025-01-15T00:00:00Z",
+        "pushed_at": "2025-03-02T00:00:00Z",
+        "stargazers_count": 123,
+        "open_issues_count": 4,
+        "license": {"spdx_id": "MIT"},
+        "default_branch": "main",
+        "open_graph_image_url": "https://example.com/og.png",
+    }
+    repo_response.raise_for_status = MagicMock()
+
+    commit_response = MagicMock()
+    commit_response.status_code = 200
+    commit_response.json.return_value = {
+        "commit": {"committer": {"date": "2025-03-01T00:00:00Z"}}
+    }
+
+    with patch("autoresearch_researcher.tools.github.httpx.Client") as MockClient:
+        mock_client = MockClient.return_value.__enter__.return_value
+        mock_client.get.side_effect = [repo_response, commit_response]
+
+        metadata = fetch_github_metadata("https://github.com/example/tool-a")
+
+    assert metadata == {
+        "stars": 123,
+        "open_issues": 4,
+        "last_commit": "2025-03-01T00:00:00Z",
+        "license": "MIT",
+        "page_title": "tool-a",
+        "page_description": "Source-provided repo description.",
+        "page_image_url": "https://example.com/og.png",
+        "page_published_at": "2025-01-15T00:00:00Z",
+        "source_updated_at": "2025-03-01T00:00:00Z",
+    }
 
 
 # ── profile loading helper ──────────────────────────────────────────────────────
