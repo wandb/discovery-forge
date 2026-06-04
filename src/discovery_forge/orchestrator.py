@@ -22,7 +22,7 @@ from weave.integrations.openai_agents import openai_agents as weave_openai_agent
 from weave.integrations.openai_agents.openai_agents import WeaveTracingProcessor
 from weave.trace.context.weave_client_context import get_weave_client
 
-from autoresearch_researcher.tools.search import DEFAULT_SEARCH_BACKEND, RecencyWindow, SearchBackend
+from discovery_forge.tools.search import DEFAULT_SEARCH_BACKEND, RecencyWindow, SearchBackend
 
 
 _AGENT_TRACE_CALLS: dict[str, tuple[str | None, str | None]] = {}
@@ -59,7 +59,7 @@ class CostBudget:
 
 def patch_weave_agent_span_names() -> None:
     """Teach Weave's Agents integration to name SDK task/turn spans."""
-    if getattr(weave_openai_agents, "_autoresearch_span_names_patched", False):
+    if getattr(weave_openai_agents, "_discovery_forge_span_names_patched", False):
         return
 
     original_call_name = weave_openai_agents._call_name
@@ -73,10 +73,10 @@ def patch_weave_agent_span_names() -> None:
         return original_call_name(span)
 
     weave_openai_agents._call_name = named_call
-    weave_openai_agents._autoresearch_span_names_patched = True
+    weave_openai_agents._discovery_forge_span_names_patched = True
 
 
-class AutoresearchWeaveTracingProcessor(WeaveTracingProcessor):
+class DiscoveryForgeWeaveTracingProcessor(WeaveTracingProcessor):
     """Weave processor tuned for readable single-agent research traces."""
 
     def __init__(self) -> None:
@@ -237,9 +237,9 @@ def get_agent_trace_call_metadata(trace_id: str) -> tuple[str | None, str | None
 
 def init_observability(day_id: str):
     """Initialize W&B Weave tracing. Call exactly once per app lifecycle."""
-    client = weave.init("wandb-smle/autoresearch-researcher")
+    client = weave.init("wandb-smle/discovery-forge")
     patch_weave_agent_span_names()
-    set_trace_processors([AutoresearchWeaveTracingProcessor()])
+    set_trace_processors([DiscoveryForgeWeaveTracingProcessor()])
     return client
 
 
@@ -340,7 +340,7 @@ def _trace_metadata(trace) -> dict[str, Any]:
 
 def profile_review_output(profile: dict[str, Any], *, status: str) -> dict[str, Any]:
     """Return Annotation Queue-friendly research output fields."""
-    from autoresearch_researcher.tools.feed import feed_metadata_for_profile
+    from discovery_forge.tools.feed import feed_metadata_for_profile
 
     slug = profile.get("slug") or "unknown"
     primary_url = (
@@ -650,16 +650,16 @@ async def run_briefing(
     Respects max_cost_usd; preserves partial outputs on budget exceeded.
     Weave tracing must be initialized before calling this (init_observability).
     """
-    from autoresearch_researcher.agents.researcher import build_researcher_agent
-    from autoresearch_researcher.tools.feed import build_feed_output
-    from autoresearch_researcher.tools.prompts import (
+    from discovery_forge.agents.researcher import build_researcher_agent
+    from discovery_forge.tools.feed import build_feed_output
+    from discovery_forge.tools.prompts import (
         load_local_instruction_prompts,
         prompt_contents,
         prompt_hashes,
         prompt_refs,
         publish_instruction_prompts,
     )
-    from autoresearch_researcher.tools.registry import ToolRegistry
+    from discovery_forge.tools.registry import ToolRegistry
 
     metadata_path = output_dir / "run_metadata.json"
     run_id = create_run_id(day)

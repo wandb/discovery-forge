@@ -96,7 +96,7 @@ jobs:
           WANDB_API_KEY: ${{ secrets.WANDB_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          uv run autoresearch-researcher run \
+          uv run discovery-forge run \
             --day "${{ steps.day.outputs.day }}" \
             --output-dir daily_runs \
             --max-tools "${{ inputs.max_tools || '20' }}" \
@@ -110,8 +110,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          git config user.name "autoresearch-bot"
-          git config user.email "autoresearch-bot@users.noreply.github.com"
+          git config user.name "discovery-forge-bot"
+          git config user.email "discovery-forge-bot@users.noreply.github.com"
           BRANCH="daily/${{ steps.day.outputs.day }}"
 
           git add -f daily_runs/

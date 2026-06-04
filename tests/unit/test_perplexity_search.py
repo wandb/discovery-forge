@@ -13,13 +13,13 @@ ROOT = Path(__file__).parent.parent.parent
 
 
 def test_default_search_backend_is_serper():
-    from autoresearch_researcher.tools.search import DEFAULT_SEARCH_BACKEND
+    from discovery_forge.tools.search import DEFAULT_SEARCH_BACKEND
 
     assert DEFAULT_SEARCH_BACKEND == "serper"
 
 
 def test_serper_search_returns_normalized_results(monkeypatch):
-    from autoresearch_researcher.tools.search import serper_search
+    from discovery_forge.tools.search import serper_search
 
     monkeypatch.setenv("SERPER_API_KEY", "test-key")
     mock_response = {
@@ -36,7 +36,7 @@ def test_serper_search_returns_normalized_results(monkeypatch):
             "link": "https://example.com/toolx",
         }],
     }
-    with patch("autoresearch_researcher.tools.search.httpx.Client") as MockClient:
+    with patch("discovery_forge.tools.search.httpx.Client") as MockClient:
         mock_client = MockClient.return_value.__enter__.return_value
         mock_client.post.return_value.json.return_value = mock_response
         mock_client.post.return_value.raise_for_status = MagicMock()
@@ -50,10 +50,10 @@ def test_serper_search_returns_normalized_results(monkeypatch):
 
 
 def test_serper_search_uses_serper_endpoint(monkeypatch):
-    from autoresearch_researcher.tools.search import serper_search
+    from discovery_forge.tools.search import serper_search
 
     monkeypatch.setenv("SERPER_API_KEY", "test-key")
-    with patch("autoresearch_researcher.tools.search.httpx.Client") as MockClient:
+    with patch("discovery_forge.tools.search.httpx.Client") as MockClient:
         mock_client = MockClient.return_value.__enter__.return_value
         mock_client.post.return_value.json.return_value = {"organic": []}
         mock_client.post.return_value.raise_for_status = MagicMock()
@@ -71,10 +71,10 @@ def test_serper_search_uses_serper_endpoint(monkeypatch):
 
 
 def test_serper_search_adds_tbs_when_recency_set(monkeypatch):
-    from autoresearch_researcher.tools.search import serper_search
+    from discovery_forge.tools.search import serper_search
 
     monkeypatch.setenv("SERPER_API_KEY", "test-key")
-    with patch("autoresearch_researcher.tools.search.httpx.Client") as MockClient:
+    with patch("discovery_forge.tools.search.httpx.Client") as MockClient:
         mock_client = MockClient.return_value.__enter__.return_value
         mock_client.post.return_value.json.return_value = {"organic": []}
         mock_client.post.return_value.raise_for_status = MagicMock()
@@ -86,10 +86,10 @@ def test_serper_search_adds_tbs_when_recency_set(monkeypatch):
 
 
 def test_serper_search_omits_tbs_when_no_recency(monkeypatch):
-    from autoresearch_researcher.tools.search import serper_search
+    from discovery_forge.tools.search import serper_search
 
     monkeypatch.setenv("SERPER_API_KEY", "test-key")
-    with patch("autoresearch_researcher.tools.search.httpx.Client") as MockClient:
+    with patch("discovery_forge.tools.search.httpx.Client") as MockClient:
         mock_client = MockClient.return_value.__enter__.return_value
         mock_client.post.return_value.json.return_value = {"organic": []}
         mock_client.post.return_value.raise_for_status = MagicMock()
@@ -101,7 +101,7 @@ def test_serper_search_omits_tbs_when_no_recency(monkeypatch):
 
 
 def test_serper_search_without_api_key_returns_error(monkeypatch):
-    from autoresearch_researcher.tools.search import serper_search
+    from discovery_forge.tools.search import serper_search
 
     monkeypatch.delenv("SERPER_API_KEY", raising=False)
 
@@ -110,7 +110,7 @@ def test_serper_search_without_api_key_returns_error(monkeypatch):
 
 
 def test_search_web_query_routes_to_serper(monkeypatch):
-    from autoresearch_researcher.tools import search
+    from discovery_forge.tools import search
 
     monkeypatch.setattr(search, "serper_search", lambda query, recency=None: f"serper:{query}:{recency}")
     assert search.search_web_query("abc", backend="serper") == "serper:abc:None"
@@ -118,7 +118,7 @@ def test_search_web_query_routes_to_serper(monkeypatch):
 
 
 def test_search_web_query_routes_to_perplexity(monkeypatch):
-    from autoresearch_researcher.tools import search
+    from discovery_forge.tools import search
 
     monkeypatch.setattr(search, "perplexity_search", lambda query, recency=None: f"pplx:{query}:{recency}")
     assert search.search_web_query("abc", backend="perplexity") == "pplx:abc:None"
@@ -126,19 +126,19 @@ def test_search_web_query_routes_to_perplexity(monkeypatch):
 
 
 def test_search_web_query_rejects_unknown_backend():
-    from autoresearch_researcher.tools.search import search_web_query
+    from discovery_forge.tools.search import search_web_query
 
     result = search_web_query("abc", backend="unknown")
     assert "unsupported search backend" in result.lower()
 
 def test_perplexity_search_returns_string():
-    from autoresearch_researcher.tools.search import perplexity_search
+    from discovery_forge.tools.search import perplexity_search
 
     mock_response = {
         "choices": [{"message": {"content": "Found: ToolX at https://github.com/x/toolx"}}],
         "citations": ["https://github.com/x/toolx", "https://arxiv.org/abs/2025.00001"],
     }
-    with patch("autoresearch_researcher.tools.search.httpx.Client") as MockClient:
+    with patch("discovery_forge.tools.search.httpx.Client") as MockClient:
         mock_client = MockClient.return_value.__enter__.return_value
         mock_client.post.return_value.json.return_value = mock_response
         mock_client.post.return_value.raise_for_status = MagicMock()
@@ -150,14 +150,14 @@ def test_perplexity_search_returns_string():
 
 
 def test_perplexity_search_includes_citations(monkeypatch):
-    from autoresearch_researcher.tools.search import perplexity_search
+    from discovery_forge.tools.search import perplexity_search
     monkeypatch.setenv("PERPLEXITY_API_KEY", "test-key")
 
     mock_response = {
         "choices": [{"message": {"content": "Found: ToolX"}}],
         "citations": ["https://github.com/x/toolx", "https://arxiv.org/abs/2025.00001"],
     }
-    with patch("autoresearch_researcher.tools.search.httpx.Client") as MockClient:
+    with patch("discovery_forge.tools.search.httpx.Client") as MockClient:
         mock_client = MockClient.return_value.__enter__.return_value
         mock_client.post.return_value.json.return_value = mock_response
         mock_client.post.return_value.raise_for_status = MagicMock()
@@ -168,10 +168,10 @@ def test_perplexity_search_includes_citations(monkeypatch):
 
 
 def test_perplexity_search_sets_recency_filter_when_given(monkeypatch):
-    from autoresearch_researcher.tools.search import perplexity_search
+    from discovery_forge.tools.search import perplexity_search
     monkeypatch.setenv("PERPLEXITY_API_KEY", "test-key")
 
-    with patch("autoresearch_researcher.tools.search.httpx.Client") as MockClient:
+    with patch("discovery_forge.tools.search.httpx.Client") as MockClient:
         mock_client = MockClient.return_value.__enter__.return_value
         mock_client.post.return_value.json.return_value = {"choices": [{"message": {"content": "x"}}], "citations": []}
         mock_client.post.return_value.raise_for_status = MagicMock()
@@ -182,10 +182,10 @@ def test_perplexity_search_sets_recency_filter_when_given(monkeypatch):
 
 
 def test_perplexity_search_omits_recency_filter_when_none(monkeypatch):
-    from autoresearch_researcher.tools.search import perplexity_search
+    from discovery_forge.tools.search import perplexity_search
     monkeypatch.setenv("PERPLEXITY_API_KEY", "test-key")
 
-    with patch("autoresearch_researcher.tools.search.httpx.Client") as MockClient:
+    with patch("discovery_forge.tools.search.httpx.Client") as MockClient:
         mock_client = MockClient.return_value.__enter__.return_value
         mock_client.post.return_value.json.return_value = {"choices": [{"message": {"content": "x"}}], "citations": []}
         mock_client.post.return_value.raise_for_status = MagicMock()
@@ -196,14 +196,14 @@ def test_perplexity_search_omits_recency_filter_when_none(monkeypatch):
 
 
 def test_perplexity_search_uses_correct_api_endpoint(monkeypatch):
-    from autoresearch_researcher.tools.search import perplexity_search
+    from discovery_forge.tools.search import perplexity_search
     monkeypatch.setenv("PERPLEXITY_API_KEY", "test-key")
 
     mock_response = {
         "choices": [{"message": {"content": "result"}}],
         "citations": [],
     }
-    with patch("autoresearch_researcher.tools.search.httpx.Client") as MockClient:
+    with patch("discovery_forge.tools.search.httpx.Client") as MockClient:
         mock_client = MockClient.return_value.__enter__.return_value
         mock_client.post.return_value.json.return_value = mock_response
         mock_client.post.return_value.raise_for_status = MagicMock()
@@ -216,14 +216,14 @@ def test_perplexity_search_uses_correct_api_endpoint(monkeypatch):
 
 
 def test_perplexity_search_uses_sonar_model(monkeypatch):
-    from autoresearch_researcher.tools.search import perplexity_search
+    from discovery_forge.tools.search import perplexity_search
     monkeypatch.setenv("PERPLEXITY_API_KEY", "test-key")
 
     mock_response = {
         "choices": [{"message": {"content": "result"}}],
         "citations": [],
     }
-    with patch("autoresearch_researcher.tools.search.httpx.Client") as MockClient:
+    with patch("discovery_forge.tools.search.httpx.Client") as MockClient:
         mock_client = MockClient.return_value.__enter__.return_value
         mock_client.post.return_value.json.return_value = mock_response
         mock_client.post.return_value.raise_for_status = MagicMock()
@@ -236,10 +236,10 @@ def test_perplexity_search_uses_sonar_model(monkeypatch):
 
 
 def test_perplexity_search_gracefully_handles_api_error():
-    from autoresearch_researcher.tools.search import perplexity_search
+    from discovery_forge.tools.search import perplexity_search
     import httpx
 
-    with patch("autoresearch_researcher.tools.search.httpx.Client") as MockClient:
+    with patch("discovery_forge.tools.search.httpx.Client") as MockClient:
         mock_client = MockClient.return_value.__enter__.return_value
         mock_client.post.side_effect = httpx.HTTPError("connection error")
 
@@ -250,7 +250,7 @@ def test_perplexity_search_gracefully_handles_api_error():
 
 
 def test_perplexity_search_without_api_key_returns_error(monkeypatch):
-    from autoresearch_researcher.tools.search import perplexity_search
+    from discovery_forge.tools.search import perplexity_search
     monkeypatch.delenv("PERPLEXITY_API_KEY", raising=False)
 
     result = perplexity_search("test query")
@@ -260,14 +260,14 @@ def test_perplexity_search_without_api_key_returns_error(monkeypatch):
 # ── Discovery agent uses configured search backend ──────────────────────────
 
 def test_researcher_agent_has_search_tool():
-    from autoresearch_researcher.agents.researcher import build_researcher_agent
+    from discovery_forge.agents.researcher import build_researcher_agent
     agent = build_researcher_agent(output_dir=Path("/tmp"))
     tool_names = [t.name if hasattr(t, "name") else str(t) for t in agent.tools]
     assert any("search" in name.lower() for name in tool_names)
 
 
 def test_search_web_query_openai_backend_is_handled_at_agent_level():
-    from autoresearch_researcher.tools.search import search_web_query
+    from discovery_forge.tools.search import search_web_query
     result = search_web_query("anything", backend="openai")
     assert "WebSearchTool" in result
 

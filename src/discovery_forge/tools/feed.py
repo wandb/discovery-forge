@@ -1,4 +1,4 @@
-"""Agentforge feed export for daily autoresearch runs."""
+"""Agentforge feed export for daily discovery-forge runs."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from autoresearch_researcher.tools.profiles import load_tool_profiles_from_dir
+from discovery_forge.tools.profiles import load_tool_profiles_from_dir
 
 RAW_ARTIFACTS = {
     "_candidates.jsonl": "candidates.jsonl",
@@ -130,7 +130,7 @@ def dedupe_key_for_url(url: str | None, *, fallback_id: str) -> str:
     if url:
         normalized = _normalize_url(url)
         return f"url:{hashlib.sha256(normalized.encode('utf-8')).hexdigest()}"
-    return f"source:autoresearch:{fallback_id}"
+    return f"source:discovery-forge:{fallback_id}"
 
 
 def feed_metadata_for_profile(profile: dict[str, Any]) -> dict[str, Any]:

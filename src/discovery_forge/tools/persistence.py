@@ -5,8 +5,8 @@ from pathlib import Path
 
 import yaml
 
-from autoresearch_researcher.schemas.sources import Source
-from autoresearch_researcher.schemas.tool_profile import ToolProfile
+from discovery_forge.schemas.sources import Source
+from discovery_forge.schemas.tool_profile import ToolProfile
 
 
 def save_tool_profile(profile: ToolProfile, tools_dir: Path) -> None:

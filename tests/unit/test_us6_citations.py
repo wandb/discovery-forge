@@ -12,7 +12,7 @@ ROOT = Path(__file__).parent.parent.parent
 # ── Source schema ─────────────────────────────────────────────────────────────
 
 def test_source_schema_fields():
-    from autoresearch_researcher.schemas.sources import Source
+    from discovery_forge.schemas.sources import Source
     s = Source(
         id=1,
         url="https://example.com",
@@ -25,7 +25,7 @@ def test_source_schema_fields():
 
 
 def test_source_schema_used_in_is_list():
-    from autoresearch_researcher.schemas.sources import Source
+    from discovery_forge.schemas.sources import Source
     s = Source(
         id=2,
         url="https://github.com/example/tool",
@@ -39,8 +39,8 @@ def test_source_schema_used_in_is_list():
 # ── save_source / load_sources persistence ────────────────────────────────────
 
 def test_save_source_writes_jsonl(tmp_path):
-    from autoresearch_researcher.schemas.sources import Source
-    from autoresearch_researcher.tools.persistence import save_source, load_sources
+    from discovery_forge.schemas.sources import Source
+    from discovery_forge.tools.persistence import save_source, load_sources
 
     sources_file = tmp_path / "sources.jsonl"
     s = Source(
@@ -61,8 +61,8 @@ def test_save_source_writes_jsonl(tmp_path):
 
 
 def test_load_sources_round_trips(tmp_path):
-    from autoresearch_researcher.schemas.sources import Source
-    from autoresearch_researcher.tools.persistence import save_source, load_sources
+    from discovery_forge.schemas.sources import Source
+    from discovery_forge.tools.persistence import save_source, load_sources
 
     sources_file = tmp_path / "sources.jsonl"
     for i in range(3):
@@ -82,7 +82,7 @@ def test_load_sources_round_trips(tmp_path):
 
 
 def test_load_sources_empty_file_returns_empty(tmp_path):
-    from autoresearch_researcher.tools.persistence import load_sources
+    from discovery_forge.tools.persistence import load_sources
     sources_file = tmp_path / "sources.jsonl"
     assert load_sources(sources_file) == []
 
@@ -90,8 +90,8 @@ def test_load_sources_empty_file_returns_empty(tmp_path):
 # ── verify_citations logic ────────────────────────────────────────────────────
 
 def test_verify_citations_clean_report_no_errors():
-    from autoresearch_researcher.schemas.sources import Source
-    from autoresearch_researcher.tools.citations import verify_citations
+    from discovery_forge.schemas.sources import Source
+    from discovery_forge.tools.citations import verify_citations
 
     sources = [
         Source(id=1, url="https://a.com", title="A", fetched_at=datetime.now(timezone.utc), used_in=["t"]),
@@ -103,8 +103,8 @@ def test_verify_citations_clean_report_no_errors():
 
 
 def test_verify_citations_missing_source_id():
-    from autoresearch_researcher.schemas.sources import Source
-    from autoresearch_researcher.tools.citations import verify_citations
+    from discovery_forge.schemas.sources import Source
+    from discovery_forge.tools.citations import verify_citations
 
     sources = [
         Source(id=1, url="https://a.com", title="A", fetched_at=datetime.now(timezone.utc), used_in=["t"]),
@@ -115,8 +115,8 @@ def test_verify_citations_missing_source_id():
 
 
 def test_verify_citations_orphan_source_warning():
-    from autoresearch_researcher.schemas.sources import Source
-    from autoresearch_researcher.tools.citations import verify_citations
+    from discovery_forge.schemas.sources import Source
+    from discovery_forge.tools.citations import verify_citations
 
     sources = [
         Source(id=1, url="https://a.com", title="A", fetched_at=datetime.now(timezone.utc), used_in=["t"]),
@@ -128,8 +128,8 @@ def test_verify_citations_orphan_source_warning():
 
 
 def test_verify_citations_empty_report_with_sources():
-    from autoresearch_researcher.schemas.sources import Source
-    from autoresearch_researcher.tools.citations import verify_citations
+    from discovery_forge.schemas.sources import Source
+    from discovery_forge.tools.citations import verify_citations
 
     sources = [
         Source(id=1, url="https://a.com", title="A", fetched_at=datetime.now(timezone.utc), used_in=["t"]),
@@ -139,13 +139,13 @@ def test_verify_citations_empty_report_with_sources():
 
 
 def test_verify_citations_no_sources_no_citations_is_clean():
-    from autoresearch_researcher.tools.citations import verify_citations
+    from discovery_forge.tools.citations import verify_citations
     errors = verify_citations("No citations.", [])
     assert errors == []
 
 
 def test_verify_citations_returns_list_of_strings():
-    from autoresearch_researcher.tools.citations import verify_citations
+    from discovery_forge.tools.citations import verify_citations
     errors = verify_citations("Text [^999].", [])
     assert isinstance(errors, list)
     assert all(isinstance(e, str) for e in errors)
@@ -154,7 +154,7 @@ def test_verify_citations_returns_list_of_strings():
 # ── Integration: sources tracking (retained citation subsystem) ──────────────
 
 def test_source_registry_allocates_sequential_ids(tmp_path):
-    from autoresearch_researcher.tools.citations import SourceRegistry
+    from discovery_forge.tools.citations import SourceRegistry
 
     registry = SourceRegistry(tmp_path / "sources.jsonl")
     id1 = registry.register(url="https://a.com", title="A", used_in="tool-a")
@@ -167,8 +167,8 @@ def test_source_registry_allocates_sequential_ids(tmp_path):
 
 
 def test_source_registry_persists_to_jsonl(tmp_path):
-    from autoresearch_researcher.tools.citations import SourceRegistry
-    from autoresearch_researcher.tools.persistence import load_sources
+    from discovery_forge.tools.citations import SourceRegistry
+    from discovery_forge.tools.persistence import load_sources
 
     sources_file = tmp_path / "sources.jsonl"
     registry = SourceRegistry(sources_file)

@@ -1,4 +1,4 @@
-"""CLI entrypoint for autoresearch-researcher."""
+"""CLI entrypoint for discovery-forge."""
 
 import asyncio
 import json
@@ -11,11 +11,11 @@ from typing import Optional
 import typer
 from dotenv import load_dotenv
 
-from autoresearch_researcher.tools.search import DEFAULT_SEARCH_BACKEND
+from discovery_forge.tools.search import DEFAULT_SEARCH_BACKEND
 
 load_dotenv()
 
-app = typer.Typer(name="autoresearch-researcher", help="Daily tool briefing agent for experiment automation research.")
+app = typer.Typer(name="discovery-forge", help="Daily tool briefing agent for experiment automation research.")
 feedback_app = typer.Typer(help="Ingest human feedback from Weave traces.")
 improve_app = typer.Typer(help="Generate prompt-only improvement proposals.")
 eval_app = typer.Typer(help="Build and run evaluation datasets.")
@@ -52,7 +52,7 @@ async def run_briefing(
     recency: str | None = None,
 ) -> None:
     """Delegate to orchestrator.run_briefing."""
-    from autoresearch_researcher.orchestrator import run_briefing as _run
+    from discovery_forge.orchestrator import run_briefing as _run
     await _run(
         day=day,
         output_dir=output_dir,
@@ -93,7 +93,7 @@ def run(
         raise typer.Exit(code=1)
 
     if day_dir.exists() and rerun:
-        from autoresearch_researcher.orchestrator import backup_run_dir
+        from discovery_forge.orchestrator import backup_run_dir
         backup = backup_run_dir(day_dir)
         candidate_manifest = backup / "manifest.json"
         if candidate_manifest.exists():
@@ -119,7 +119,7 @@ def run(
 
     if not dry_run:
         try:
-            from autoresearch_researcher.orchestrator import init_observability
+            from discovery_forge.orchestrator import init_observability
             weave_client = init_observability(day_id=day)
             if weave_client is not None:
                 typer.echo(f"Weave tracing: {getattr(weave_client, 'url', '(see W&B dashboard)')}")
@@ -165,8 +165,8 @@ def feedback_ingest(
         raise typer.Exit(code=1)
 
     try:
-        from autoresearch_researcher.orchestrator import init_observability
-        from autoresearch_researcher.tools.feedback import ingest_feedback
+        from discovery_forge.orchestrator import init_observability
+        from discovery_forge.tools.feedback import ingest_feedback
 
         client = init_observability(day_id=day)
         events = ingest_feedback(day_dir, client)
@@ -188,6 +188,11 @@ def eval_run_researcher(
         help="Search backend for the ResearcherAgent",
     ),
     limit: Optional[int] = typer.Option(None, "--limit", help="Optional row limit for smoke runs"),
+    researcher_prompt_ref: Optional[str] = typer.Option(
+        None,
+        "--researcher-prompt-ref",
+        help="Optional Weave StringPrompt ref for researcher_instructions",
+    ),
 ) -> None:
     """Run ResearcherAgent against a scope/profile evaluation dataset in Weave."""
     if (dataset_path is None) == (dataset_ref is None):
@@ -198,8 +203,8 @@ def eval_run_researcher(
         raise typer.Exit(code=1)
 
     try:
-        from autoresearch_researcher.orchestrator import init_observability
-        from autoresearch_researcher.tools.evaluation import run_researcher_evaluation
+        from discovery_forge.orchestrator import init_observability
+        from discovery_forge.tools.evaluation import run_researcher_evaluation
 
         init_observability(day_id="researcher-eval")
         result = run_researcher_evaluation(
@@ -208,12 +213,84 @@ def eval_run_researcher(
             output_dir=output_dir,
             search_backend=search_backend.value,
             limit=limit,
+            researcher_prompt_ref=researcher_prompt_ref,
         )
     except Exception as e:
         typer.echo(f"Researcher evaluation failed: {e}", err=True)
         raise typer.Exit(code=2)
 
     typer.echo("Researcher evaluation complete.")
+    typer.echo(str(result))
+
+
+@eval_app.command("publish-dataset")
+def eval_publish_dataset(
+    dataset_path: Path = typer.Option(..., "--dataset", help="Local JSONL dataset path"),
+    name: str = typer.Option(..., "--name", help="Weave Dataset object name"),
+) -> None:
+    """Publish a local JSONL eval dataset as a versioned Weave Dataset."""
+    if not dataset_path.exists():
+        typer.echo(f"ERROR: {dataset_path} not found.", err=True)
+        raise typer.Exit(code=1)
+    try:
+        from discovery_forge.orchestrator import init_observability
+        from discovery_forge.tools.discovery_evaluation import publish_eval_dataset
+
+        init_observability(day_id="eval-dataset")
+        result = publish_eval_dataset(dataset_path, name=name)
+    except Exception as e:
+        typer.echo(f"Dataset publish failed: {e}", err=True)
+        raise typer.Exit(code=2)
+
+    typer.echo(f"Published dataset `{result['name']}` with {result['row_count']} rows.")
+    typer.echo(f"Ref: {result['ref']}")
+
+
+@eval_app.command("run-discovery")
+def eval_run_discovery(
+    dataset_path: Optional[Path] = typer.Option(None, "--dataset", help="Local JSONL dataset path"),
+    dataset_ref: Optional[str] = typer.Option(None, "--dataset-ref", help="Weave Dataset ref URI"),
+    output_dir: Path = typer.Option(Path("eval_runs/discovery"), help="Directory for discovery eval artifacts"),
+    search_backend: SearchBackendOption = typer.Option(
+        SearchBackendOption(DEFAULT_SEARCH_BACKEND),
+        "--search-backend",
+        help="Search backend for the ResearcherAgent",
+    ),
+    limit: Optional[int] = typer.Option(None, "--limit", help="Optional row limit for smoke runs"),
+    judge_model: str = typer.Option("gpt-5.4-mini", "--judge-model", help="Model used by the LLM judge scorer"),
+    researcher_prompt_ref: Optional[str] = typer.Option(
+        None,
+        "--researcher-prompt-ref",
+        help="Optional Weave StringPrompt ref for researcher_instructions",
+    ),
+) -> None:
+    """Run discovery quality evaluation in Weave."""
+    if (dataset_path is None) == (dataset_ref is None):
+        typer.echo("ERROR: Provide exactly one of --dataset or --dataset-ref.", err=True)
+        raise typer.Exit(code=1)
+    if dataset_path is not None and not dataset_path.exists():
+        typer.echo(f"ERROR: {dataset_path} not found.", err=True)
+        raise typer.Exit(code=1)
+
+    try:
+        from discovery_forge.orchestrator import init_observability
+        from discovery_forge.tools.discovery_evaluation import run_discovery_evaluation
+
+        init_observability(day_id="discovery-eval")
+        result = run_discovery_evaluation(
+            dataset_path=dataset_path,
+            dataset_ref=dataset_ref,
+            output_dir=output_dir,
+            search_backend=search_backend.value,
+            limit=limit,
+            judge_model=judge_model,
+            researcher_prompt_ref=researcher_prompt_ref,
+        )
+    except Exception as e:
+        typer.echo(f"Discovery evaluation failed: {e}", err=True)
+        raise typer.Exit(code=2)
+
+    typer.echo("Discovery evaluation complete.")
     typer.echo(str(result))
 
 
@@ -229,8 +306,8 @@ def improve_propose(
         raise typer.Exit(code=1)
 
     try:
-        from autoresearch_researcher.orchestrator import init_observability
-        from autoresearch_researcher.tools.improvement import propose_prompt_improvements
+        from discovery_forge.orchestrator import init_observability
+        from discovery_forge.tools.improvement import propose_prompt_improvements
 
         init_observability(day_id=day)
         result = propose_prompt_improvements(day_dir)
@@ -254,8 +331,8 @@ def improve_apply(
         raise typer.Exit(code=1)
 
     try:
-        from autoresearch_researcher.orchestrator import init_observability
-        from autoresearch_researcher.tools.improvement import apply_prompt_improvements_traced
+        from discovery_forge.orchestrator import init_observability
+        from discovery_forge.tools.improvement import apply_prompt_improvements_traced
 
         init_observability(day_id=day)
         result = apply_prompt_improvements_traced(day_dir)

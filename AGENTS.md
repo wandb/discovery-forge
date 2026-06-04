@@ -3,7 +3,7 @@
 This file is the **build guide** Claude Code reads on every iteration.
 It is the guide for the *coder building the agents*, not the runtime guide for the research agent.
 
-For feedback-driven work, also read `skills/autoresearch-feedback-improvement/SKILL.md`. It is the shared workflow for turning Weave annotations and local annotation seeds into prompt or code improvements.
+For feedback-driven work, also read `skills/discovery-forge-feedback-improvement/SKILL.md`. It is the shared workflow for turning Weave annotations and local annotation seeds into prompt or code improvements.
 
 ---
 
@@ -12,7 +12,7 @@ For feedback-driven work, also read `skills/autoresearch-feedback-improvement/SK
 - `AGENTS.md` — the canonical build guide and source of truth for coding agents.
 - `README.md` — agent architecture diagram, daily accumulation model, CLI usage.
 - `PRD.md` — User Stories with checkboxes, scope definition, and validation criteria.
-- `skills/autoresearch-feedback-improvement/SKILL.md` — workflow for using Weave annotations and local feedback seeds to guide prompt or code improvements.
+- `skills/discovery-forge-feedback-improvement/SKILL.md` — workflow for using Weave annotations and local feedback seeds to guide prompt or code improvements.
 
 ---
 
@@ -56,12 +56,12 @@ uv run pytest tests/unit/test_researcher.py::test_scope_filter_deep_research_too
 uv add <package>
 
 # Run the CLI
-uv run autoresearch-researcher run --day 2026-05-19 [--max-tools N --max-cost-usd N --dry-run --rerun --search-backend serper|perplexity|openai --since day|week|month|year|all]
+uv run discovery-forge run --day 2026-05-19 [--max-tools N --max-cost-usd N --dry-run --rerun --search-backend serper|perplexity|openai --since day|week|month|year|all]
 
 # Ingest Weave annotations, then improve the prompt (prompt-only loop)
-uv run autoresearch-researcher feedback ingest --day 2026-05-19
-uv run autoresearch-researcher improve propose --day 2026-05-19
-uv run autoresearch-researcher improve apply --day 2026-05-19
+uv run discovery-forge feedback ingest --day 2026-05-19
+uv run discovery-forge improve propose --day 2026-05-19
+uv run discovery-forge improve apply --day 2026-05-19
 ```
 
 ---
@@ -69,7 +69,7 @@ uv run autoresearch-researcher improve apply --day 2026-05-19
 ## Directory Layout
 
 ```
-src/autoresearch_researcher/
+src/discovery_forge/
 ├── __init__.py
 ├── cli.py                  # entrypoint (Typer)
 ├── orchestrator.py         # single-agent loop + cost budget + tracing
@@ -188,8 +188,8 @@ import weave
 from agents import RunConfig, set_trace_processors
 
 def init_observability(day_id: str):
-    weave.init("wandb-smle/autoresearch-researcher")
-    set_trace_processors([AutoresearchWeaveTracingProcessor()])
+    weave.init("wandb-smle/discovery-forge")
+    set_trace_processors([DiscoveryForgeWeaveTracingProcessor()])
 
 # Tag each per-tool research run via attributes
 import weave
@@ -220,7 +220,7 @@ async def run_briefing(day_id: str):
 
 The displayed review unit is the named Agents SDK trace `research_run_{i}` — one run per tool. The orchestrator no longer assigns a search lane; it passes the iteration, exclusion list, and recency hint, while the ResearcherAgent uses the Query Example Pool in `researcher.md` to write its own search queries. Each trace is linked from `_profile_runs.jsonl` by `weave_call_id`, `agent_trace_id`, `workflow_name`, `run_id`, `slug`, `status`, and the researcher prompt hash. Do not add a separate `daily_run` trace unless it carries real diagnostic detail; the daily summary belongs in `run_metadata.json`.
 
-Always pass a named `RunConfig` to `Runner.run()` so Weave shows `research_run_{i}` instead of the SDK default `Agent workflow`. `init_observability()` uses `AutoresearchWeaveTracingProcessor`, which records the Weave call ID for each Agents trace and hides SDK task/turn spans while re-parenting their child tool calls to the nearest visible agent call. A run should read as `research_run_{i} → ResearcherAgent → openai.responses.create/search_web/save_*`.
+Always pass a named `RunConfig` to `Runner.run()` so Weave shows `research_run_{i}` instead of the SDK default `Agent workflow`. `init_observability()` uses `DiscoveryForgeWeaveTracingProcessor`, which records the Weave call ID for each Agents trace and hides SDK task/turn spans while re-parenting their child tool calls to the nearest visible agent call. A run should read as `research_run_{i} → ResearcherAgent → openai.responses.create/search_web/save_*`.
 
 The ResearcherAgent's visible output is a reviewer-friendly profile review (accepted profile or rejection), built from `save_tool_profile_tool` / `save_rejected_profile_tool` calls.
 
@@ -304,7 +304,7 @@ async def test_e2e_smoke_run(tmp_path):
 
 ## Rules for writing agent instructions
 
-Keep instructions in `src/autoresearch_researcher/instructions/{agent_name}.md`.
+Keep instructions in `src/discovery_forge/instructions/{agent_name}.md`.
 
 Why:
 1. Tune prompts without touching code
@@ -372,7 +372,7 @@ def verify_citations(report: str, sources: list[Source]) -> list[str]:
 - ❌ Do not hardcode an Agent's instructions in code. Always load from `instructions/*.md`.
 - ❌ Do not call the built-in `WebSearchTool` on a plain ChatCompletions model (Responses API only). It is only wired in for `--search-backend openai`, which assumes a Responses-API model (gpt-4o / gpt-5 family).
 - ❌ **Do not call `weave.init()` more than once per process** — exactly one call from the orchestrator entrypoint.
-- ❌ **Use `set_trace_processors([AutoresearchWeaveTracingProcessor()])` to *replace*, not add** — never use `add_trace_processor`.
+- ❌ **Use `set_trace_processors([DiscoveryForgeWeaveTracingProcessor()])` to *replace*, not add** — never use `add_trace_processor`.
 - ❌ Do not call real `weave.init` from unit tests — mock it via the fixture for token savings and isolation.
 
 ---
@@ -394,7 +394,7 @@ For every User Story:
 
 <!-- Ralph fills in below this line. -->
 - US1: After `uv sync`, a stale `VIRTUAL_ENV` env pointing to a different venv triggers a warning — `uv run` still works, but the warning shows up whenever a different venv was already active. Safe to ignore.
-- US2: When a Typer CLI calls an async orchestrator via `asyncio.run()`, tests must `AsyncMock` patch at `autoresearch_researcher.cli.run_briefing` — the wrong module path silently no-ops the mock.
+- US2: When a Typer CLI calls an async orchestrator via `asyncio.run()`, tests must `AsyncMock` patch at `discovery_forge.cli.run_briefing` — the wrong module path silently no-ops the mock.
 - US3: `@function_tool` definitions need to capture `output_dir` via a closure inside the agent factory. Passing the path as a tool arg means the model has to know it; the `build_*_agent(output_dir)` pattern with closure binding is the right shape.
 - US4: Splitting a pure helper like `is_experiment_automation()` out of the agent module lets you unit-test the scope filter without LLM mocking. Layering rule-based filters under LLM judgement is the key to test-ability.
 - US5: WriterAgent's `read_tool_profiles_tool` should strip the `_body` field and return JSON to keep the context window small. Fetch the full body via `get_tool_body_tool(slug)` only when needed — much more token-efficient.

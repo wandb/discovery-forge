@@ -4,8 +4,8 @@ from pathlib import Path
 
 
 def test_researcher_agent_accepts_registry_param(tmp_path):
-    from autoresearch_researcher.agents.researcher import build_researcher_agent
-    from autoresearch_researcher.tools.registry import ToolRegistry
+    from discovery_forge.agents.researcher import build_researcher_agent
+    from discovery_forge.tools.registry import ToolRegistry
 
     registry = ToolRegistry.load(tmp_path / "_registry")
     agent = build_researcher_agent(output_dir=tmp_path, registry=registry, day="2026-05-19")
@@ -14,8 +14,8 @@ def test_researcher_agent_accepts_registry_param(tmp_path):
 
 
 def test_researcher_agent_has_is_known_tool(tmp_path):
-    from autoresearch_researcher.agents.researcher import build_researcher_agent
-    from autoresearch_researcher.tools.registry import ToolRegistry
+    from discovery_forge.agents.researcher import build_researcher_agent
+    from discovery_forge.tools.registry import ToolRegistry
 
     registry = ToolRegistry.load(tmp_path / "_registry")
     agent = build_researcher_agent(output_dir=tmp_path, registry=registry, day="2026-05-19")
@@ -25,14 +25,14 @@ def test_researcher_agent_has_is_known_tool(tmp_path):
 
 def test_researcher_agent_works_without_registry(tmp_path):
     """Backwards compatibility: registry param is optional."""
-    from autoresearch_researcher.agents.researcher import build_researcher_agent
+    from discovery_forge.agents.researcher import build_researcher_agent
 
     agent = build_researcher_agent(output_dir=tmp_path)
     assert agent is not None
 
 
 def test_registry_starts_empty(tmp_path):
-    from autoresearch_researcher.tools.registry import ToolRegistry
+    from discovery_forge.tools.registry import ToolRegistry
 
     registry = ToolRegistry.load(tmp_path / "_registry")
     assert len(registry.get_all_entries()) == 0

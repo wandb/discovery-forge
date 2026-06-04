@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from autoresearch_researcher.orchestrator import run_briefing
+from discovery_forge.orchestrator import run_briefing
 
 
 @pytest.mark.expensive
@@ -86,7 +86,7 @@ async def test_e2e_smoke_dry_run(tmp_path):
 @pytest.mark.asyncio
 async def test_e2e_smoke_tool_profiles_are_in_scope(tmp_path):
     """All generated tool profiles in dry-run must be experiment-automation (not deep research)."""
-    from autoresearch_researcher.agents.researcher import is_experiment_automation
+    from discovery_forge.agents.researcher import is_experiment_automation
     import yaml
 
     await run_briefing(

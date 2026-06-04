@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 from typer.testing import CliRunner
 
-from autoresearch_researcher.cli import app
+from discovery_forge.cli import app
 
 runner = CliRunner()
 
@@ -39,7 +39,7 @@ def _bootstrap_instructions(instructions_dir: Path) -> None:
 
 
 def test_load_feedback_context_reads_all_artifacts(tmp_path):
-    from autoresearch_researcher.tools.improvement import load_feedback_context
+    from discovery_forge.tools.improvement import load_feedback_context
 
     _write_feedback(tmp_path, [_event(name="Tool A", note="Bad. Curated list.")])
 
@@ -51,7 +51,7 @@ def test_load_feedback_context_reads_all_artifacts(tmp_path):
 
 
 def test_annotation_target_prompt_routes_research_annotations():
-    from autoresearch_researcher.tools.feedback import annotation_target_prompt
+    from discovery_forge.tools.feedback import annotation_target_prompt
 
     assert annotation_target_prompt(
         {"feedback_type": "wandb.annotation.D20260528_Research"},
@@ -68,7 +68,7 @@ def test_annotation_target_prompt_routes_research_annotations():
 
 
 def test_enrich_feedback_resolves_annotation_queue_name():
-    from autoresearch_researcher.tools.feedback import enrich_feedback_with_queue_name
+    from discovery_forge.tools.feedback import enrich_feedback_with_queue_name
 
     class FakeServer:
         def annotation_queue_read(self, req):
@@ -90,7 +90,7 @@ def test_enrich_feedback_resolves_annotation_queue_name():
 
 
 def test_feedback_ingest_collects_day_scoped_research_annotations(tmp_path):
-    from autoresearch_researcher.tools.feedback import ingest_feedback
+    from discovery_forge.tools.feedback import ingest_feedback
 
     profile_run = {
         "day": "2026-05-28",
@@ -133,7 +133,7 @@ def test_feedback_ingest_collects_day_scoped_research_annotations(tmp_path):
 
 
 def test_render_proposer_input_includes_feedback_and_current_prompt(tmp_path):
-    from autoresearch_researcher.tools.improvement import (
+    from discovery_forge.tools.improvement import (
         load_feedback_context,
         render_proposer_input,
     )
@@ -160,7 +160,7 @@ def test_render_proposer_input_includes_feedback_and_current_prompt(tmp_path):
 
 
 def test_render_proposer_input_excludes_runnable_scorer_feedback(tmp_path):
-    from autoresearch_researcher.tools.improvement import (
+    from discovery_forge.tools.improvement import (
         load_feedback_context,
         render_proposer_input,
     )
@@ -194,7 +194,7 @@ def test_render_proposer_input_excludes_runnable_scorer_feedback(tmp_path):
 
 
 def test_render_proposer_input_handles_no_feedback(tmp_path):
-    from autoresearch_researcher.tools.improvement import (
+    from discovery_forge.tools.improvement import (
         load_feedback_context,
         render_proposer_input,
     )
@@ -211,7 +211,7 @@ def test_render_proposer_input_handles_no_feedback(tmp_path):
 
 
 def test_render_applier_input_includes_plan_and_current_prompt(tmp_path):
-    from autoresearch_researcher.tools.improvement import render_applier_input
+    from discovery_forge.tools.improvement import render_applier_input
 
     instructions_dir = tmp_path / "instructions"
     _bootstrap_instructions(instructions_dir)
@@ -228,7 +228,7 @@ def test_render_applier_input_includes_plan_and_current_prompt(tmp_path):
 
 
 def test_propose_prompt_improvements_runs_agent_and_returns_plan(tmp_path):
-    from autoresearch_researcher.tools import improvement
+    from discovery_forge.tools import improvement
 
     instructions_dir = tmp_path / "instructions"
     _bootstrap_instructions(instructions_dir)
@@ -255,14 +255,14 @@ def test_propose_prompt_improvements_runs_agent_and_returns_plan(tmp_path):
     assert result["feedback_event_count"] == 1
     assert result["plan_markdown"] == plan_markdown
     assert result["target_prompt_files"] == [
-        "src/autoresearch_researcher/instructions/researcher.md"
+        "src/discovery_forge/instructions/researcher.md"
     ]
     assert Path(result["plan_path"]).name == "prompt_improvement_plan.md"
     assert Path(result["plan_path"]).exists()
 
 
 def test_propose_prompt_improvements_errors_when_agent_skips_save(tmp_path):
-    from autoresearch_researcher.tools import improvement
+    from discovery_forge.tools import improvement
 
     instructions_dir = tmp_path / "instructions"
     _bootstrap_instructions(instructions_dir)
@@ -284,8 +284,8 @@ def test_propose_prompt_improvements_errors_when_agent_skips_save(tmp_path):
 
 
 def test_apply_prompt_improvements_publishes_when_files_change(tmp_path):
-    from autoresearch_researcher.tools import improvement
-    from autoresearch_researcher.tools.prompts import InstructionPromptVersion
+    from discovery_forge.tools import improvement
+    from discovery_forge.tools.prompts import InstructionPromptVersion
 
     instructions_dir = tmp_path / "instructions"
     _bootstrap_instructions(instructions_dir)
@@ -301,7 +301,7 @@ def test_apply_prompt_improvements_publishes_when_files_change(tmp_path):
     fake_versions = {
         "researcher": InstructionPromptVersion(
             agent_name="researcher",
-            object_name="autoresearch-researcher-instructions",
+            object_name="discovery-forge-instructions",
             content="",
             formatted_content="",
             content_hash="h2",
@@ -325,7 +325,7 @@ def test_apply_prompt_improvements_publishes_when_files_change(tmp_path):
 
 
 def test_apply_prompt_improvements_skips_publish_when_no_changes(tmp_path):
-    from autoresearch_researcher.tools import improvement
+    from discovery_forge.tools import improvement
 
     instructions_dir = tmp_path / "instructions"
     _bootstrap_instructions(instructions_dir)
@@ -349,7 +349,7 @@ def test_apply_prompt_improvements_skips_publish_when_no_changes(tmp_path):
 
 
 def test_apply_prompt_improvements_requires_existing_plan(tmp_path):
-    from autoresearch_researcher.tools import improvement
+    from discovery_forge.tools import improvement
 
     instructions_dir = tmp_path / "instructions"
     _bootstrap_instructions(instructions_dir)
@@ -367,7 +367,7 @@ def test_apply_prompt_improvements_requires_existing_plan(tmp_path):
 
 
 def test_render_apply_result_markdown_lists_changed_files(tmp_path):
-    from autoresearch_researcher.tools.improvement import render_apply_result_markdown
+    from discovery_forge.tools.improvement import render_apply_result_markdown
 
     markdown = render_apply_result_markdown(
         day="2026-05-28",
@@ -381,7 +381,7 @@ def test_render_apply_result_markdown_lists_changed_files(tmp_path):
 
 
 def test_improve_propose_cli_invokes_agent_and_writes_plan(tmp_path):
-    from autoresearch_researcher.tools import improvement
+    from discovery_forge.tools import improvement
 
     day_dir = tmp_path / "2026-05-28"
     _write_feedback(day_dir, [_event(name="X", note="bad")])
@@ -391,7 +391,7 @@ def test_improve_propose_cli_invokes_agent_and_writes_plan(tmp_path):
         plan_path.write_text("# Plan")
         return plan_path
 
-    with patch("autoresearch_researcher.orchestrator.init_observability"), \
+    with patch("discovery_forge.orchestrator.init_observability"), \
          patch.object(improvement, "_run_proposer_agent", side_effect=fake_runner):
         result = runner.invoke(
             app,
@@ -403,7 +403,7 @@ def test_improve_propose_cli_invokes_agent_and_writes_plan(tmp_path):
 
 
 def test_improve_apply_cli_invokes_agent_and_reports_changes(tmp_path):
-    from autoresearch_researcher.tools import improvement
+    from discovery_forge.tools import improvement
 
     day_dir = tmp_path / "2026-05-28"
     day_dir.mkdir()
@@ -412,7 +412,7 @@ def test_improve_apply_cli_invokes_agent_and_reports_changes(tmp_path):
     async def fake_runner(*, day_dir, instructions_dir, max_turns):
         return day_dir / improvement.PLAN_FILENAME, []
 
-    with patch("autoresearch_researcher.orchestrator.init_observability"), \
+    with patch("discovery_forge.orchestrator.init_observability"), \
          patch.object(improvement, "_run_applier_agent", side_effect=fake_runner):
         result = runner.invoke(
             app,
