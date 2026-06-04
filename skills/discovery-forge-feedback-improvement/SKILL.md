@@ -1,12 +1,12 @@
 ---
-name: autoresearch-feedback-improvement
-description: Guides coding agents through feedback-driven improvement for autoresearch-researcher using either live Weave annotations or offline Weave Evaluation results. Use when improving the single ResearcherAgent prompt or behavior from review evidence; offline evaluation evidence is read-only and should drive agent changes, not dataset or scorer changes.
+name: discovery-forge-feedback-improvement
+description: Guides coding agents through feedback-driven improvement for discovery-forge using either live Weave annotations or offline Weave Evaluation results. Use when improving the single ResearcherAgent prompt or behavior from review evidence; offline evaluation evidence is read-only and should drive agent changes, not dataset or scorer changes.
 disable-model-invocation: true
 ---
 
-# Autoresearch Feedback Improvement
+# Discovery Forge Feedback Improvement
 
-Use this skill when improving the autoresearch pipeline from human review evidence. First choose the workflow, then read the matching reference file.
+Use this skill when improving the discovery-forge pipeline from human review evidence. First choose the workflow, then read the matching reference file.
 
 ## Choose The Workflow
 

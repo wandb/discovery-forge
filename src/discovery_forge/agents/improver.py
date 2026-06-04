@@ -12,7 +12,7 @@ from pathlib import Path
 
 from agents import Agent, function_tool
 
-from autoresearch_researcher.agents.researcher import load_instructions
+from discovery_forge.agents.researcher import load_instructions
 
 
 PROMPT_FILENAMES = {

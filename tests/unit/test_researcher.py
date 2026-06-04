@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 ROOT = Path(__file__).parent.parent.parent
-INSTR = ROOT / "src" / "autoresearch_researcher" / "instructions" / "researcher.md"
+INSTR = ROOT / "src" / "discovery_forge" / "instructions" / "researcher.md"
 
 
 # ── instructions ──────────────────────────────────────────────────────────────
@@ -34,7 +34,7 @@ def test_researcher_instructions_do_not_hardcode_search_years():
 
 
 def test_load_instructions_returns_string():
-    from autoresearch_researcher.agents.researcher import load_instructions
+    from discovery_forge.agents.researcher import load_instructions
     text = load_instructions("researcher")
     assert isinstance(text, str)
     assert len(text) > 50
@@ -43,14 +43,14 @@ def test_load_instructions_returns_string():
 # ── agent construction ─────────────────────────────────────────────────────────
 
 def test_build_researcher_agent_returns_agent():
-    from autoresearch_researcher.agents.researcher import build_researcher_agent
+    from discovery_forge.agents.researcher import build_researcher_agent
     agent = build_researcher_agent(output_dir=Path("/tmp"))
     assert agent is not None
     assert agent.name == "ResearcherAgent"
 
 
 def test_researcher_agent_has_expected_tools():
-    from autoresearch_researcher.agents.researcher import build_researcher_agent
+    from discovery_forge.agents.researcher import build_researcher_agent
     agent = build_researcher_agent(output_dir=Path("/tmp"))
     tool_names = {t.name for t in agent.tools}
     for expected in {
@@ -66,7 +66,7 @@ def test_researcher_agent_has_expected_tools():
 
 def test_serper_backend_uses_function_search_tool():
     from agents import WebSearchTool
-    from autoresearch_researcher.agents.researcher import build_researcher_agent
+    from discovery_forge.agents.researcher import build_researcher_agent
 
     agent = build_researcher_agent(output_dir=Path("/tmp"), search_backend="serper")
     assert not any(isinstance(t, WebSearchTool) for t in agent.tools)
@@ -74,7 +74,7 @@ def test_serper_backend_uses_function_search_tool():
 
 
 def test_build_researcher_agent_accepts_recency():
-    from autoresearch_researcher.agents.researcher import build_researcher_agent
+    from discovery_forge.agents.researcher import build_researcher_agent
 
     agent = build_researcher_agent(output_dir=Path("/tmp"), search_backend="serper", recency="month")
     assert agent is not None
@@ -83,7 +83,7 @@ def test_build_researcher_agent_accepts_recency():
 
 def test_openai_backend_uses_hosted_web_search_tool():
     from agents import WebSearchTool
-    from autoresearch_researcher.agents.researcher import build_researcher_agent
+    from discovery_forge.agents.researcher import build_researcher_agent
 
     agent = build_researcher_agent(output_dir=Path("/tmp"), search_backend="openai")
     assert any(isinstance(t, WebSearchTool) for t in agent.tools)
@@ -92,7 +92,7 @@ def test_openai_backend_uses_hosted_web_search_tool():
 
 
 def test_researcher_agent_no_hardcoded_tool_names():
-    from autoresearch_researcher.agents.researcher import build_researcher_agent
+    from discovery_forge.agents.researcher import build_researcher_agent
     agent = build_researcher_agent(output_dir=Path("/tmp"))
     instructions_lower = agent.instructions.lower()
     forbidden = ["ai scientist", "agent laboratory", "gpt-researcher", "perplexity"]
@@ -101,8 +101,8 @@ def test_researcher_agent_no_hardcoded_tool_names():
 
 
 def test_researcher_agent_accepts_registry_param(tmp_path):
-    from autoresearch_researcher.agents.researcher import build_researcher_agent
-    from autoresearch_researcher.tools.registry import ToolRegistry
+    from discovery_forge.agents.researcher import build_researcher_agent
+    from discovery_forge.tools.registry import ToolRegistry
 
     registry = ToolRegistry.load(tmp_path / "_registry")
     agent = build_researcher_agent(output_dir=tmp_path, registry=registry, day="2026-05-28")
@@ -113,7 +113,7 @@ def test_researcher_agent_accepts_registry_param(tmp_path):
 # ── scope filter (no LLM call) ──────────────────────────────────────────────────
 
 def test_scope_filter_deep_research_tool_is_rejected():
-    from autoresearch_researcher.agents.researcher import is_experiment_automation
+    from discovery_forge.agents.researcher import is_experiment_automation
     assert is_experiment_automation(
         autonomy_level="Analyst",
         description="Searches the web and produces a comprehensive research report by summarizing sources.",
@@ -122,7 +122,7 @@ def test_scope_filter_deep_research_tool_is_rejected():
 
 
 def test_scope_filter_experiment_tool_is_accepted():
-    from autoresearch_researcher.agents.researcher import is_experiment_automation
+    from discovery_forge.agents.researcher import is_experiment_automation
     assert is_experiment_automation(
         autonomy_level="Scientist",
         description="Proposes hypotheses, writes experiment code, runs ML training, and generates a paper.",
@@ -131,7 +131,7 @@ def test_scope_filter_experiment_tool_is_accepted():
 
 
 def test_scope_filter_chemistry_automation_is_accepted():
-    from autoresearch_researcher.agents.researcher import is_experiment_automation
+    from discovery_forge.agents.researcher import is_experiment_automation
     assert is_experiment_automation(
         autonomy_level="Scientist",
         description="Controls robotic lab equipment to perform chemical synthesis experiments autonomously.",
@@ -140,7 +140,7 @@ def test_scope_filter_chemistry_automation_is_accepted():
 
 
 def test_scope_filter_rag_tool_is_rejected():
-    from autoresearch_researcher.agents.researcher import is_experiment_automation
+    from discovery_forge.agents.researcher import is_experiment_automation
     assert is_experiment_automation(
         autonomy_level="Tool",
         description="Retrieval-augmented generation pipeline for Q&A over scientific literature.",
@@ -151,7 +151,7 @@ def test_scope_filter_rag_tool_is_rejected():
 # ── schemas + persistence ───────────────────────────────────────────────────────
 
 def test_tool_profile_schema_fields():
-    from autoresearch_researcher.schemas.tool_profile import ToolProfile
+    from discovery_forge.schemas.tool_profile import ToolProfile
     p = ToolProfile(
         slug="test-tool",
         name="Test Tool",
@@ -182,7 +182,7 @@ def test_tool_profile_schema_fields():
 
 
 def test_rejected_profile_schema():
-    from autoresearch_researcher.schemas.tool_profile import RejectedProfile
+    from discovery_forge.schemas.tool_profile import RejectedProfile
     r = RejectedProfile(
         slug="deep-search-tool",
         name="Deep Search Tool",
@@ -194,8 +194,8 @@ def test_rejected_profile_schema():
 
 
 def test_save_tool_profile_writes_yaml_frontmatter(tmp_path):
-    from autoresearch_researcher.schemas.tool_profile import ToolProfile
-    from autoresearch_researcher.tools.persistence import save_tool_profile
+    from discovery_forge.schemas.tool_profile import ToolProfile
+    from discovery_forge.tools.persistence import save_tool_profile
 
     tools_dir = tmp_path / "tools"
     profile = ToolProfile(
@@ -235,7 +235,7 @@ def test_save_tool_profile_writes_yaml_frontmatter(tmp_path):
 
 
 def test_fetch_github_metadata_signature():
-    from autoresearch_researcher.tools.github import fetch_github_metadata
+    from discovery_forge.tools.github import fetch_github_metadata
     import inspect
     sig = inspect.signature(fetch_github_metadata)
     assert "github_url" in sig.parameters
@@ -244,7 +244,7 @@ def test_fetch_github_metadata_signature():
 def test_fetch_github_metadata_includes_source_page_fields():
     from unittest.mock import MagicMock, patch
 
-    from autoresearch_researcher.tools.github import fetch_github_metadata
+    from discovery_forge.tools.github import fetch_github_metadata
 
     repo_response = MagicMock()
     repo_response.json.return_value = {
@@ -267,7 +267,7 @@ def test_fetch_github_metadata_includes_source_page_fields():
         "commit": {"committer": {"date": "2025-03-01T00:00:00Z"}}
     }
 
-    with patch("autoresearch_researcher.tools.github.httpx.Client") as MockClient:
+    with patch("discovery_forge.tools.github.httpx.Client") as MockClient:
         mock_client = MockClient.return_value.__enter__.return_value
         mock_client.get.side_effect = [repo_response, commit_response]
 
@@ -315,7 +315,7 @@ def _write_profile(tools_dir: Path, slug: str) -> None:
 
 
 def test_load_tool_profiles_from_dir(tmp_path):
-    from autoresearch_researcher.tools.profiles import load_tool_profiles_from_dir
+    from discovery_forge.tools.profiles import load_tool_profiles_from_dir
     tools_dir = tmp_path / "tools"
     for i in range(3):
         _write_profile(tools_dir, f"test-tool-{i}")
@@ -325,7 +325,7 @@ def test_load_tool_profiles_from_dir(tmp_path):
 
 
 def test_load_tool_profiles_skips_underscore_files(tmp_path):
-    from autoresearch_researcher.tools.profiles import load_tool_profiles_from_dir
+    from discovery_forge.tools.profiles import load_tool_profiles_from_dir
     tools_dir = tmp_path / "tools"
     _write_profile(tools_dir, "test-tool-0")
     (tools_dir / "_candidates.jsonl").write_text('{"name": "x"}\n')

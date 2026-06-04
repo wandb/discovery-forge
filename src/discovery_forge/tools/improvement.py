@@ -17,12 +17,12 @@ from typing import Any
 import weave
 from agents import Runner
 
-from autoresearch_researcher.agents.improver import (
+from discovery_forge.agents.improver import (
     PROMPT_FILENAMES,
     build_prompt_applier_agent,
     build_prompt_proposer_agent,
 )
-from autoresearch_researcher.tools.prompts import (
+from discovery_forge.tools.prompts import (
     INSTRUCTIONS_DIR,
     prompt_refs as prompt_refs_for_versions,
     publish_instruction_prompts,
@@ -66,7 +66,7 @@ def render_proposer_input(
     lines = [
         f"# Day: {context.day}",
         "",
-        "You are improving prompt-only behavior for the autoresearch ResearcherAgent.",
+        "You are improving prompt-only behavior for the discovery-forge ResearcherAgent.",
         "Read every feedback event, then call `save_improvement_plan` exactly once.",
         "All feedback applies to the single prompt `researcher.md`.",
         "",
@@ -151,7 +151,7 @@ async def _run_applier_agent(
     plan_path = day_dir / PLAN_FILENAME
     if not plan_path.exists():
         raise FileNotFoundError(
-            f"{plan_path} does not exist. Run `autoresearch-researcher improve propose` first."
+            f"{plan_path} does not exist. Run `discovery-forge improve propose` first."
         )
 
     instructions_dir.mkdir(parents=True, exist_ok=True)
@@ -191,7 +191,7 @@ def propose_prompt_improvements(
         "proposal_path": str(plan_path),
         "feedback_event_count": len(_human_feedback_events(context.feedback_events)),
         "target_prompt_files": [
-            f"src/autoresearch_researcher/instructions/{name}"
+            f"src/discovery_forge/instructions/{name}"
             for name in PROMPT_FILENAMES.values()
         ],
         "prompt_only": True,

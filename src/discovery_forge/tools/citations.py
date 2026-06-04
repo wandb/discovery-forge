@@ -5,7 +5,7 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
-from autoresearch_researcher.schemas.sources import Source
+from discovery_forge.schemas.sources import Source
 
 
 def verify_citations(report: str, sources: list[Source]) -> list[str]:

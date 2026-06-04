@@ -56,8 +56,8 @@ Scorer の解釈:
 実行:
 
 ```bash
-uv run autoresearch-researcher eval run-researcher \
-  --dataset-ref 'weave:///wandb-smle/autoresearch-researcher/object/researcher_verdict_dataset:<version>' \
+uv run discovery-forge eval run-researcher \
+  --dataset-ref 'weave:///wandb-smle/discovery-forge/object/researcher_verdict_dataset:<version>' \
   --output-dir eval_runs/verdict \
   --limit 5
 ```
@@ -65,7 +65,7 @@ uv run autoresearch-researcher eval run-researcher \
 Publish:
 
 ```bash
-uv run autoresearch-researcher eval publish-dataset \
+uv run discovery-forge eval publish-dataset \
   --dataset eval/researcher_verdict_dataset.jsonl \
   --name researcher_verdict_dataset
 ```
@@ -112,8 +112,8 @@ strict/lenient metrics を別に出さない理由:
 実行:
 
 ```bash
-uv run autoresearch-researcher eval run-discovery \
-  --dataset-ref 'weave:///wandb-smle/autoresearch-researcher/object/researcher_discovery_precision_dataset:<version>' \
+uv run discovery-forge eval run-discovery \
+  --dataset-ref 'weave:///wandb-smle/discovery-forge/object/researcher_discovery_precision_dataset:<version>' \
   --output-dir eval_runs/discovery \
   --limit 5
 ```
@@ -121,7 +121,7 @@ uv run autoresearch-researcher eval run-discovery \
 Publish:
 
 ```bash
-uv run autoresearch-researcher eval publish-dataset \
+uv run discovery-forge eval publish-dataset \
   --dataset eval/researcher_discovery_precision.jsonl \
   --name researcher_discovery_precision_dataset
 ```

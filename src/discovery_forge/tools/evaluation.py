@@ -12,9 +12,9 @@ import weave
 import yaml
 from agents import Runner
 
-from autoresearch_researcher.agents.researcher import build_researcher_agent
-from autoresearch_researcher.tools.prompts import load_prompt_ref_content
-from autoresearch_researcher.tools.search import DEFAULT_SEARCH_BACKEND, SearchBackend
+from discovery_forge.agents.researcher import build_researcher_agent
+from discovery_forge.tools.prompts import load_prompt_ref_content
+from discovery_forge.tools.search import DEFAULT_SEARCH_BACKEND, SearchBackend
 
 
 class VerdictQualityEvaluation(weave.Evaluation):

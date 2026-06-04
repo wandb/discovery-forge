@@ -13,7 +13,7 @@ When the user provides a Weave evaluation URL, inspect that exact evaluation fir
 Default project:
 
 - Entity: `wandb-smle`
-- Project: `autoresearch-researcher`
+- Project: `discovery-forge`
 
 Evidence priority:
 
@@ -58,7 +58,7 @@ Do not edit these files during offline improvement. If a row appears wrong, repo
 If no evaluation link is provided, run the evaluation dataset:
 
 ```bash
-uv run autoresearch-researcher eval run-researcher \
+uv run discovery-forge eval run-researcher \
   --dataset-path <dataset.jsonl> \
   --output-dir eval_runs/researcher-<date> \
   --search-backend serper
@@ -66,14 +66,14 @@ uv run autoresearch-researcher eval run-researcher \
 
 `--dataset-ref <weave-dataset-ref>` may be used instead of `--dataset-path` to reuse a published Weave dataset object.
 
-Evaluation code lives in `src/autoresearch_researcher/tools/evaluation.py`.
+Evaluation code lives in `src/discovery_forge/tools/evaluation.py`.
 
 Implementation constraints:
 
 - `eval run-researcher` must reuse the supplied Weave dataset object when `--dataset-ref` is provided.
 - Local JSONL evaluation may pass plain row lists to `weave.Evaluation`, but should not publish a new dataset unless explicitly requested.
 - Keep `weave.init()` centralized through the CLI/orchestrator path.
-- Do not modify `src/autoresearch_researcher/tools/evaluation.py` or scorer behavior in this workflow.
+- Do not modify `src/discovery_forge/tools/evaluation.py` or scorer behavior in this workflow.
 
 ## 4. Interpret Evaluation Failures
 
@@ -123,12 +123,12 @@ Create a short plan before edits. Each item should include:
 
 Offline improvements may target only:
 
-- `src/autoresearch_researcher/instructions/researcher.md` for prompt/scope wording
-- `src/autoresearch_researcher/agents/researcher.py` only when prompt/scorer changes are insufficient
+- `src/discovery_forge/instructions/researcher.md` for prompt/scope wording
+- `src/discovery_forge/agents/researcher.py` only when prompt/scorer changes are insufficient
 
 Do not target:
 
-- `src/autoresearch_researcher/tools/evaluation.py`
+- `src/discovery_forge/tools/evaluation.py`
 - local dataset-generation utilities
 - Weave dataset versions or scorer definitions
 
@@ -149,4 +149,4 @@ Use the smallest meaningful validation:
 
 - `uv run pytest tests/unit/test_researcher.py -v` for ResearcherAgent behavior changes
 - `uv run pytest tests/unit/test_profiler_evaluation.py -v` only to confirm the unchanged evaluation runner still works
-- `uv run autoresearch-researcher eval run-researcher --dataset-path <dataset.jsonl> --output-dir eval_runs/researcher-<date>` for behavior changes
+- `uv run discovery-forge eval run-researcher --dataset-path <dataset.jsonl> --output-dir eval_runs/researcher-<date>` for behavior changes

@@ -5,14 +5,14 @@ from unittest.mock import AsyncMock, patch
 
 from typer.testing import CliRunner
 
-from autoresearch_researcher.cli import app
+from discovery_forge.cli import app
 
 
 runner = CliRunner()
 
 
 def test_load_jsonl_rows_reads_discovery_dataset(tmp_path):
-    from autoresearch_researcher.tools.discovery_evaluation import load_jsonl_rows
+    from discovery_forge.tools.discovery_evaluation import load_jsonl_rows
 
     dataset_path = tmp_path / "dataset.jsonl"
     dataset_path.write_text(
@@ -25,7 +25,7 @@ def test_load_jsonl_rows_reads_discovery_dataset(tmp_path):
 
 
 def test_publish_eval_dataset_uses_weave_dataset(tmp_path):
-    from autoresearch_researcher.tools import discovery_evaluation as module
+    from discovery_forge.tools import discovery_evaluation as module
 
     dataset_path = tmp_path / "dataset.jsonl"
     dataset_path.write_text(
@@ -57,7 +57,7 @@ def test_publish_eval_dataset_uses_weave_dataset(tmp_path):
 
 
 def test_make_discovery_eval_predict_fn_reads_saved_profile(tmp_path):
-    from autoresearch_researcher.tools.discovery_evaluation import make_discovery_eval_predict_fn
+    from discovery_forge.tools.discovery_evaluation import make_discovery_eval_predict_fn
 
     async def fake_run(agent, input, max_turns):
         row_dir = tmp_path / "row-1" / "tools"
@@ -79,7 +79,7 @@ def test_make_discovery_eval_predict_fn_reads_saved_profile(tmp_path):
 
     predict = make_discovery_eval_predict_fn(output_dir=tmp_path)
     with patch(
-        "autoresearch_researcher.tools.discovery_evaluation.Runner.run",
+        "discovery_forge.tools.discovery_evaluation.Runner.run",
         new=AsyncMock(side_effect=fake_run),
     ):
         output = asyncio.run(
@@ -92,7 +92,7 @@ def test_make_discovery_eval_predict_fn_reads_saved_profile(tmp_path):
 
 
 def test_aggregate_discovery_metrics_computes_quality_rates():
-    from autoresearch_researcher.tools.discovery_evaluation import aggregate_discovery_metrics
+    from discovery_forge.tools.discovery_evaluation import aggregate_discovery_metrics
 
     metrics = aggregate_discovery_metrics([
         {"rating": "good", "quality_score": 1.0},
@@ -111,7 +111,7 @@ def test_aggregate_discovery_metrics_computes_quality_rates():
 
 
 def test_discovery_quality_judge_exposes_minimal_quality_metrics():
-    from autoresearch_researcher.tools.discovery_evaluation import DiscoveryQualityJudge
+    from discovery_forge.tools.discovery_evaluation import DiscoveryQualityJudge
 
     class FakeResponses:
         def create(self, *, model, input):
@@ -145,7 +145,7 @@ def test_discovery_quality_judge_exposes_minimal_quality_metrics():
 
 
 def test_discovery_quality_judge_skips_non_accepted_outputs():
-    from autoresearch_researcher.tools.discovery_evaluation import DiscoveryQualityJudge
+    from discovery_forge.tools.discovery_evaluation import DiscoveryQualityJudge
 
     score = DiscoveryQualityJudge(model_id="gpt-test").score({
         "scope_status": "rejected",
@@ -160,7 +160,7 @@ def test_discovery_quality_judge_skips_non_accepted_outputs():
 
 
 def test_run_discovery_evaluation_reuses_dataset_ref(tmp_path):
-    from autoresearch_researcher.tools import discovery_evaluation as module
+    from discovery_forge.tools import discovery_evaluation as module
 
     fake_dataset = type("FakeDataset", (), {"rows": [{"id": "row-1", "search_brief": "Find one tool."}]})()
     captured = {}
@@ -203,9 +203,9 @@ def test_eval_publish_dataset_cli_wires_arguments(tmp_path):
     dataset_path = tmp_path / "dataset.jsonl"
     dataset_path.write_text(json.dumps({"id": "row-1"}) + "\n")
 
-    with patch("autoresearch_researcher.orchestrator.init_observability"), \
+    with patch("discovery_forge.orchestrator.init_observability"), \
         patch(
-            "autoresearch_researcher.tools.discovery_evaluation.publish_eval_dataset",
+            "discovery_forge.tools.discovery_evaluation.publish_eval_dataset",
             return_value={"name": "test_dataset", "row_count": 1, "ref": "weave:///dataset:v1"},
         ) as publish:
         result = runner.invoke(app, [
@@ -226,9 +226,9 @@ def test_eval_run_discovery_cli_wires_arguments(tmp_path):
     dataset_path = tmp_path / "dataset.jsonl"
     dataset_path.write_text(json.dumps({"id": "row-1", "search_brief": "Find one tool."}) + "\n")
 
-    with patch("autoresearch_researcher.orchestrator.init_observability"), \
+    with patch("discovery_forge.orchestrator.init_observability"), \
         patch(
-            "autoresearch_researcher.tools.discovery_evaluation.run_discovery_evaluation",
+            "discovery_forge.tools.discovery_evaluation.run_discovery_evaluation",
             return_value={"ok": True},
         ) as run_eval:
         result = runner.invoke(app, [

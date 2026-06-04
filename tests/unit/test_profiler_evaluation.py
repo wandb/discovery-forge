@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, patch
 
 
 def test_verdict_quality_scorer_matches_expected():
-    from autoresearch_researcher.tools.evaluation import verdict_quality_scorer
+    from discovery_forge.tools.evaluation import verdict_quality_scorer
 
     score = verdict_quality_scorer({"scope_status": "accepted"}, "accepted")
 
@@ -15,7 +15,7 @@ def test_verdict_quality_scorer_matches_expected():
 
 
 def test_verdict_quality_scorer_reports_mismatch():
-    from autoresearch_researcher.tools.evaluation import verdict_quality_scorer
+    from discovery_forge.tools.evaluation import verdict_quality_scorer
 
     score = verdict_quality_scorer(
         {"scope_status": "accepted", "verdict_reason": None},
@@ -28,7 +28,7 @@ def test_verdict_quality_scorer_reports_mismatch():
 
 
 def test_profile_quality_scorer_scores_verdict_reason():
-    from autoresearch_researcher.tools.evaluation import profile_quality_scorer
+    from discovery_forge.tools.evaluation import profile_quality_scorer
 
     score = profile_quality_scorer(
         {
@@ -44,7 +44,7 @@ def test_profile_quality_scorer_scores_verdict_reason():
 
 
 def test_profile_quality_scorer_scores_accepted_profile_completeness():
-    from autoresearch_researcher.tools.evaluation import profile_quality_scorer
+    from discovery_forge.tools.evaluation import profile_quality_scorer
 
     score = profile_quality_scorer(
         {
@@ -71,7 +71,7 @@ def test_profile_quality_scorer_scores_accepted_profile_completeness():
 
 
 def test_profile_quality_scorer_allows_unknown_advisory_fields():
-    from autoresearch_researcher.tools.evaluation import profile_quality_scorer
+    from discovery_forge.tools.evaluation import profile_quality_scorer
 
     score = profile_quality_scorer(
         {
@@ -99,7 +99,7 @@ def test_profile_quality_scorer_allows_unknown_advisory_fields():
 
 
 def test_profile_quality_scorer_still_requires_core_profile_fields():
-    from autoresearch_researcher.tools.evaluation import profile_quality_scorer
+    from discovery_forge.tools.evaluation import profile_quality_scorer
 
     score = profile_quality_scorer(
         {
@@ -124,7 +124,7 @@ def test_profile_quality_scorer_still_requires_core_profile_fields():
 
 
 def test_read_researcher_output_prefers_rejected_profile(tmp_path):
-    from autoresearch_researcher.tools.evaluation import _read_researcher_output
+    from discovery_forge.tools.evaluation import _read_researcher_output
 
     rejected = {
         "slug": "tool-a",
@@ -140,7 +140,7 @@ def test_read_researcher_output_prefers_rejected_profile(tmp_path):
 
 
 def test_researcher_eval_predict_fn_returns_saved_profile(tmp_path):
-    from autoresearch_researcher.tools.evaluation import make_researcher_eval_predict_fn
+    from discovery_forge.tools.evaluation import make_researcher_eval_predict_fn
 
     async def fake_run(agent, input, max_turns):
         tools_dir = tmp_path / "tool-a" / "tools"
@@ -163,7 +163,7 @@ def test_researcher_eval_predict_fn_returns_saved_profile(tmp_path):
         return type("Result", (), {"final_output": "done"})()
 
     predict = make_researcher_eval_predict_fn(output_dir=tmp_path)
-    with patch("autoresearch_researcher.tools.evaluation.Runner.run", new=AsyncMock(side_effect=fake_run)):
+    with patch("discovery_forge.tools.evaluation.Runner.run", new=AsyncMock(side_effect=fake_run)):
         import asyncio
 
         output = asyncio.run(
@@ -179,7 +179,7 @@ def test_researcher_eval_predict_fn_returns_saved_profile(tmp_path):
 
 
 def test_run_researcher_evaluation_uses_local_rows_without_publishing_dataset(tmp_path):
-    from autoresearch_researcher.tools import evaluation as evaluation_module
+    from discovery_forge.tools import evaluation as evaluation_module
 
     dataset_path = tmp_path / "dataset.jsonl"
     dataset_path.write_text(
@@ -225,7 +225,7 @@ def test_run_researcher_evaluation_uses_local_rows_without_publishing_dataset(tm
 
 
 def test_run_researcher_evaluation_reuses_dataset_ref_object(tmp_path):
-    from autoresearch_researcher.tools import evaluation as evaluation_module
+    from discovery_forge.tools import evaluation as evaluation_module
 
     fake_dataset = type("FakeDataset", (), {"rows": [{"input_tool_name": "Tool A"}]})()
     captured = {}

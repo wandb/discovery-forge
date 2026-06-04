@@ -6,9 +6,9 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from autoresearch_researcher.schemas.registry import RegistryEntry
-from autoresearch_researcher.schemas.tool_profile import ToolProfile
-from autoresearch_researcher.tools.persistence import save_tool_profile
+from discovery_forge.schemas.registry import RegistryEntry
+from discovery_forge.schemas.tool_profile import ToolProfile
+from discovery_forge.tools.persistence import save_tool_profile
 
 
 def _normalize_url(url: str) -> str:
@@ -121,7 +121,7 @@ class ToolRegistry:
 
     def get_all_profiles(self) -> list[dict]:
         """Return all profile front-matter dicts from profiles/*.md."""
-        from autoresearch_researcher.tools.profiles import load_tool_profiles_from_dir
+        from discovery_forge.tools.profiles import load_tool_profiles_from_dir
         return load_tool_profiles_from_dir(self.profiles_dir)
 
     def _rewrite_tools_jsonl(self) -> None:

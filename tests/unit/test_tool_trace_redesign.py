@@ -7,7 +7,7 @@ import pytest
 
 
 def test_append_profile_run_writes_trace_contract(tmp_path):
-    from autoresearch_researcher.orchestrator import append_profile_run
+    from discovery_forge.orchestrator import append_profile_run
 
     record = {
         "day": "2026-05-28",
@@ -27,7 +27,7 @@ def test_append_profile_run_writes_trace_contract(tmp_path):
 
 
 def test_stage_run_config_names_research_workflow():
-    from autoresearch_researcher.orchestrator import stage_run_config
+    from discovery_forge.orchestrator import stage_run_config
 
     config = stage_run_config(
         workflow_name="research_run_1",
@@ -50,7 +50,7 @@ def test_stage_run_config_names_research_workflow():
 
 
 def test_render_research_prompt_includes_query_pool_hint_and_recency():
-    from autoresearch_researcher.orchestrator import render_research_prompt
+    from discovery_forge.orchestrator import render_research_prompt
 
     prompt = render_research_prompt(
         day="2026-05-28",
@@ -68,7 +68,7 @@ def test_render_research_prompt_includes_query_pool_hint_and_recency():
 
 
 def test_render_research_prompt_keeps_iteration_number_for_repeated_runs():
-    from autoresearch_researcher.orchestrator import render_research_prompt
+    from discovery_forge.orchestrator import render_research_prompt
 
     prompt = render_research_prompt(
         day="2026-05-28",
@@ -84,7 +84,7 @@ def test_patch_weave_agent_span_names_names_task_and_turn_spans():
     from agents.tracing import TaskSpanData, TurnSpanData
     from weave.integrations.openai_agents import openai_agents as weave_openai_agents
 
-    from autoresearch_researcher.orchestrator import patch_weave_agent_span_names
+    from discovery_forge.orchestrator import patch_weave_agent_span_names
 
     patch_weave_agent_span_names()
 
@@ -95,12 +95,12 @@ def test_patch_weave_agent_span_names_names_task_and_turn_spans():
     assert weave_openai_agents._call_name(turn_span) == "ResearcherAgent turn 2"
 
 
-def test_autoresearch_processor_skips_task_and_turn_spans():
+def test_discovery_forge_processor_skips_task_and_turn_spans():
     from agents.tracing import TaskSpanData, TurnSpanData
 
-    from autoresearch_researcher.orchestrator import AutoresearchWeaveTracingProcessor
+    from discovery_forge.orchestrator import DiscoveryForgeWeaveTracingProcessor
 
-    processor = AutoresearchWeaveTracingProcessor()
+    processor = DiscoveryForgeWeaveTracingProcessor()
     root_call = SimpleNamespace(id="root-call")
     processor._trace_calls["trace-1"] = root_call
 
@@ -128,9 +128,9 @@ def test_autoresearch_processor_skips_task_and_turn_spans():
 
 
 def test_hidden_turn_children_are_reparented_to_agent_call():
-    from autoresearch_researcher.orchestrator import AutoresearchWeaveTracingProcessor
+    from discovery_forge.orchestrator import DiscoveryForgeWeaveTracingProcessor
 
-    processor = AutoresearchWeaveTracingProcessor()
+    processor = DiscoveryForgeWeaveTracingProcessor()
     root_call = SimpleNamespace(id="root-call")
     agent_call = SimpleNamespace(id="agent-call")
     processor._trace_calls["trace-1"] = root_call
@@ -142,7 +142,7 @@ def test_hidden_turn_children_are_reparented_to_agent_call():
 
 
 def test_profile_review_output_for_accepted_profile():
-    from autoresearch_researcher.orchestrator import profile_review_output
+    from discovery_forge.orchestrator import profile_review_output
 
     output = profile_review_output({
         "slug": "tool-a",
@@ -192,7 +192,7 @@ def test_profile_review_output_for_accepted_profile():
 
 
 def test_profile_review_output_for_rejected_profile():
-    from autoresearch_researcher.orchestrator import profile_review_output
+    from discovery_forge.orchestrator import profile_review_output
 
     output = profile_review_output({
         "slug": "tool-a",
@@ -214,9 +214,9 @@ def test_profile_review_output_for_rejected_profile():
 def test_research_agent_output_contains_review_markdown():
     from agents.tracing import AgentSpanData
 
-    from autoresearch_researcher.orchestrator import AutoresearchWeaveTracingProcessor
+    from discovery_forge.orchestrator import DiscoveryForgeWeaveTracingProcessor
 
-    processor = AutoresearchWeaveTracingProcessor()
+    processor = DiscoveryForgeWeaveTracingProcessor()
     processor._accepted_profiles["trace-1"] = {
         "slug": "tool-a",
         "name": "Tool A",
@@ -240,8 +240,8 @@ def test_research_agent_output_contains_review_markdown():
 
 
 def test_processor_trace_end_merges_registered_review_output(monkeypatch):
-    from autoresearch_researcher import orchestrator
-    from autoresearch_researcher.orchestrator import AutoresearchWeaveTracingProcessor
+    from discovery_forge import orchestrator
+    from discovery_forge.orchestrator import DiscoveryForgeWeaveTracingProcessor
 
     finished = {}
 
@@ -250,7 +250,7 @@ def test_processor_trace_end_merges_registered_review_output(monkeypatch):
             finished["call"] = call
             finished["output"] = output
 
-    processor = AutoresearchWeaveTracingProcessor()
+    processor = DiscoveryForgeWeaveTracingProcessor()
     processor._trace_data["trace-1"] = {"metrics": {}, "metadata": {"stage": "research"}}
     processor._trace_calls["trace-1"] = object()
     processor._accepted_profiles["trace-1"] = {
@@ -269,8 +269,8 @@ def test_processor_trace_end_merges_registered_review_output(monkeypatch):
 
 
 def test_trace_end_relabels_research_call_with_tool_name(monkeypatch):
-    from autoresearch_researcher import orchestrator
-    from autoresearch_researcher.orchestrator import AutoresearchWeaveTracingProcessor
+    from discovery_forge import orchestrator
+    from discovery_forge.orchestrator import DiscoveryForgeWeaveTracingProcessor
 
     renamed = {}
 
@@ -282,7 +282,7 @@ def test_trace_end_relabels_research_call_with_tool_name(monkeypatch):
         def finish_call(self, call, output):
             pass
 
-    processor = AutoresearchWeaveTracingProcessor()
+    processor = DiscoveryForgeWeaveTracingProcessor()
     processor._trace_data["trace-1"] = {"metrics": {}, "metadata": {}}
     processor._trace_calls["trace-1"] = FakeCall()
     processor._accepted_profiles["trace-1"] = {"slug": "deepscientist", "name": "DeepScientist"}
@@ -294,8 +294,8 @@ def test_trace_end_relabels_research_call_with_tool_name(monkeypatch):
 
 
 def test_trace_end_skips_relabel_when_no_profile(monkeypatch):
-    from autoresearch_researcher import orchestrator
-    from autoresearch_researcher.orchestrator import AutoresearchWeaveTracingProcessor
+    from discovery_forge import orchestrator
+    from discovery_forge.orchestrator import DiscoveryForgeWeaveTracingProcessor
 
     renamed = {}
 
@@ -307,7 +307,7 @@ def test_trace_end_skips_relabel_when_no_profile(monkeypatch):
         def finish_call(self, call, output):
             pass
 
-    processor = AutoresearchWeaveTracingProcessor()
+    processor = DiscoveryForgeWeaveTracingProcessor()
     processor._trace_data["trace-1"] = {"metrics": {}, "metadata": {}}
     processor._trace_calls["trace-1"] = FakeCall()
     # no accepted/rejected profile recorded -> report_no_new_tool / unknown
@@ -321,9 +321,9 @@ def test_trace_end_skips_relabel_when_no_profile(monkeypatch):
 def test_no_new_tool_call_outputs_no_new_verdict():
     from agents.tracing import FunctionSpanData
 
-    from autoresearch_researcher.orchestrator import AutoresearchWeaveTracingProcessor
+    from discovery_forge.orchestrator import DiscoveryForgeWeaveTracingProcessor
 
-    processor = AutoresearchWeaveTracingProcessor()
+    processor = DiscoveryForgeWeaveTracingProcessor()
     span = SimpleNamespace(
         trace_id="trace-1",
         span_data=FunctionSpanData(
@@ -342,14 +342,14 @@ def test_no_new_tool_call_outputs_no_new_verdict():
 
 
 def test_parse_tool_input_accepts_json_string():
-    from autoresearch_researcher.orchestrator import parse_tool_input
+    from discovery_forge.orchestrator import parse_tool_input
 
     assert parse_tool_input('{"name": "Tool A"}') == {"name": "Tool A"}
     assert parse_tool_input("not-json") == {}
 
 
 def test_iteration_outcome_detects_accepted_rejected_and_no_new(tmp_path):
-    from autoresearch_researcher.orchestrator import _iteration_outcome
+    from discovery_forge.orchestrator import _iteration_outcome
 
     (tmp_path / "_new_candidates.jsonl").write_text(
         json.dumps({"slug": "accepted-tool", "name": "Accepted Tool"}) + "\n"
@@ -380,8 +380,8 @@ def test_iteration_outcome_detects_accepted_rejected_and_no_new(tmp_path):
 
 
 def test_build_exclusion_block_lists_registry_and_rejections(tmp_path):
-    from autoresearch_researcher.orchestrator import build_exclusion_block
-    from autoresearch_researcher.tools.registry import ToolRegistry
+    from discovery_forge.orchestrator import build_exclusion_block
+    from discovery_forge.tools.registry import ToolRegistry
 
     registry = ToolRegistry.load(tmp_path / "_registry")
     (tmp_path / "_rejected_profiles.jsonl").write_text(
@@ -395,7 +395,7 @@ def test_build_exclusion_block_lists_registry_and_rejections(tmp_path):
 
 @pytest.mark.asyncio
 async def test_dry_run_writes_profiles_runs_and_feed(tmp_path):
-    from autoresearch_researcher.orchestrator import run_briefing
+    from discovery_forge.orchestrator import run_briefing
 
     await run_briefing(
         day="2026-05-28",
@@ -435,7 +435,7 @@ async def test_dry_run_writes_profiles_runs_and_feed(tmp_path):
 
 
 def test_feedback_ingest_writes_events_and_notes(tmp_path):
-    from autoresearch_researcher.tools.feedback import ingest_feedback
+    from discovery_forge.tools.feedback import ingest_feedback
 
     profile_run = {
         "day": "2026-05-28",

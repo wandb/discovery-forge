@@ -7,13 +7,13 @@ import pytest
 from typer.testing import CliRunner
 from unittest.mock import patch, AsyncMock
 
-from autoresearch_researcher.cli import app
+from discovery_forge.cli import app
 
 runner = CliRunner()
 
 
 def test_run_creates_daily_dir(tmp_path):
-    with patch("autoresearch_researcher.cli.run_briefing", new_callable=AsyncMock) as mock_run:
+    with patch("discovery_forge.cli.run_briefing", new_callable=AsyncMock) as mock_run:
         mock_run.return_value = None
         result = runner.invoke(app, ["run", "--day", "2026-05-28", "--output-dir", str(tmp_path)])
         assert result.exit_code == 0, result.output
@@ -21,7 +21,7 @@ def test_run_creates_daily_dir(tmp_path):
 
 
 def test_run_creates_metadata_json(tmp_path):
-    with patch("autoresearch_researcher.cli.run_briefing", new_callable=AsyncMock) as mock_run:
+    with patch("discovery_forge.cli.run_briefing", new_callable=AsyncMock) as mock_run:
         mock_run.return_value = None
         runner.invoke(app, ["run", "--day", "2026-05-28", "--output-dir", str(tmp_path)])
         metadata_path = tmp_path / "2026-05-28" / "run_metadata.json"
@@ -33,7 +33,7 @@ def test_run_creates_metadata_json(tmp_path):
 
 
 def test_run_metadata_records_completion(tmp_path):
-    with patch("autoresearch_researcher.cli.run_briefing", new_callable=AsyncMock) as mock_run:
+    with patch("discovery_forge.cli.run_briefing", new_callable=AsyncMock) as mock_run:
         mock_run.return_value = None
         runner.invoke(app, ["run", "--day", "2026-05-28", "--output-dir", str(tmp_path)])
         metadata_path = tmp_path / "2026-05-28" / "run_metadata.json"
@@ -50,7 +50,7 @@ def test_run_aborts_if_dir_exists_without_rerun(tmp_path):
 
 
 def test_run_rerun_flag_allows_existing_dir(tmp_path):
-    with patch("autoresearch_researcher.cli.run_briefing", new_callable=AsyncMock) as mock_run:
+    with patch("discovery_forge.cli.run_briefing", new_callable=AsyncMock) as mock_run:
         mock_run.return_value = None
         day_dir = tmp_path / "2026-05-28"
         day_dir.mkdir()
@@ -59,7 +59,7 @@ def test_run_rerun_flag_allows_existing_dir(tmp_path):
 
 
 def test_run_passes_max_tools_and_cost(tmp_path):
-    with patch("autoresearch_researcher.cli.run_briefing", new_callable=AsyncMock) as mock_run:
+    with patch("discovery_forge.cli.run_briefing", new_callable=AsyncMock) as mock_run:
         mock_run.return_value = None
         runner.invoke(app, [
             "run", "--day", "2026-05-28",
@@ -73,7 +73,7 @@ def test_run_passes_max_tools_and_cost(tmp_path):
 
 
 def test_run_passes_search_backend(tmp_path):
-    with patch("autoresearch_researcher.cli.run_briefing", new_callable=AsyncMock) as mock_run:
+    with patch("discovery_forge.cli.run_briefing", new_callable=AsyncMock) as mock_run:
         mock_run.return_value = None
         runner.invoke(app, [
             "run", "--day", "2026-05-28",
@@ -85,7 +85,7 @@ def test_run_passes_search_backend(tmp_path):
 
 
 def test_run_metadata_records_default_search_backend(tmp_path):
-    with patch("autoresearch_researcher.cli.run_briefing", new_callable=AsyncMock) as mock_run:
+    with patch("discovery_forge.cli.run_briefing", new_callable=AsyncMock) as mock_run:
         mock_run.return_value = None
         runner.invoke(app, ["run", "--day", "2026-05-28", "--output-dir", str(tmp_path)])
         metadata_path = tmp_path / "2026-05-28" / "run_metadata.json"
@@ -94,7 +94,7 @@ def test_run_metadata_records_default_search_backend(tmp_path):
 
 
 def test_run_defaults_to_20_max_tools(tmp_path):
-    with patch("autoresearch_researcher.cli.run_briefing", new_callable=AsyncMock) as mock_run:
+    with patch("discovery_forge.cli.run_briefing", new_callable=AsyncMock) as mock_run:
         mock_run.return_value = None
         runner.invoke(app, ["run", "--day", "2026-05-28", "--output-dir", str(tmp_path)])
         call_kwargs = mock_run.call_args.kwargs
@@ -102,28 +102,28 @@ def test_run_defaults_to_20_max_tools(tmp_path):
 
 
 def test_run_defaults_recency_to_month(tmp_path):
-    with patch("autoresearch_researcher.cli.run_briefing", new_callable=AsyncMock) as mock_run:
+    with patch("discovery_forge.cli.run_briefing", new_callable=AsyncMock) as mock_run:
         mock_run.return_value = None
         runner.invoke(app, ["run", "--day", "2026-05-28", "--output-dir", str(tmp_path)])
         assert mock_run.call_args.kwargs["recency"] == "month"
 
 
 def test_run_since_flag_passes_recency(tmp_path):
-    with patch("autoresearch_researcher.cli.run_briefing", new_callable=AsyncMock) as mock_run:
+    with patch("discovery_forge.cli.run_briefing", new_callable=AsyncMock) as mock_run:
         mock_run.return_value = None
         runner.invoke(app, ["run", "--day", "2026-05-28", "--since", "week", "--output-dir", str(tmp_path)])
         assert mock_run.call_args.kwargs["recency"] == "week"
 
 
 def test_run_since_all_disables_recency(tmp_path):
-    with patch("autoresearch_researcher.cli.run_briefing", new_callable=AsyncMock) as mock_run:
+    with patch("discovery_forge.cli.run_briefing", new_callable=AsyncMock) as mock_run:
         mock_run.return_value = None
         runner.invoke(app, ["run", "--day", "2026-05-28", "--since", "all", "--output-dir", str(tmp_path)])
         assert mock_run.call_args.kwargs["recency"] is None
 
 
 def test_run_dry_run_flag(tmp_path):
-    with patch("autoresearch_researcher.cli.run_briefing", new_callable=AsyncMock) as mock_run:
+    with patch("discovery_forge.cli.run_briefing", new_callable=AsyncMock) as mock_run:
         mock_run.return_value = None
         runner.invoke(app, [
             "run", "--day", "2026-05-28",

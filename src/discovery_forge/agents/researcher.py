@@ -10,10 +10,10 @@ from pathlib import Path
 
 from agents import Agent, WebSearchTool, function_tool
 
-from autoresearch_researcher.schemas.tool_profile import RejectedProfile, ToolProfile
-from autoresearch_researcher.tools.github import fetch_github_metadata
-from autoresearch_researcher.tools.persistence import save_tool_profile
-from autoresearch_researcher.tools.search import (
+from discovery_forge.schemas.tool_profile import RejectedProfile, ToolProfile
+from discovery_forge.tools.github import fetch_github_metadata
+from discovery_forge.tools.persistence import save_tool_profile
+from discovery_forge.tools.search import (
     DEFAULT_SEARCH_BACKEND,
     RecencyWindow,
     SearchBackend,

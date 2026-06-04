@@ -64,8 +64,8 @@ Call `save_improvement_plan` with a Markdown document that uses exactly this str
 
 **Proposed diff:**
 ```diff
---- a/src/autoresearch_researcher/instructions/researcher.md
-+++ b/src/autoresearch_researcher/instructions/researcher.md
+--- a/src/discovery_forge/instructions/researcher.md
++++ b/src/discovery_forge/instructions/researcher.md
 @@
 +...
 ```

@@ -11,7 +11,7 @@ Always fetch current annotation evidence from Weave unless the user explicitly a
 Default project:
 
 - Entity: `wandb-smle`
-- Project: `autoresearch-researcher`
+- Project: `discovery-forge`
 - Important annotation types: `QualityReviewer`, `QualitySelector`, day-scoped research annotations (`D{YYYYMMDD}_Research`), and older scorer annotations when relevant.
 
 ### Date Scope
@@ -92,7 +92,7 @@ Common failure modes:
 
 Create an improvement plan before editing files. Classify each item:
 
-- `prompt-only`: edits only `src/autoresearch_researcher/instructions/researcher.md`
+- `prompt-only`: edits only `src/discovery_forge/instructions/researcher.md`
 - `schema-review-output`: changes schemas, saved rejected profiles, or Weave review markdown
 - `registry-dedup`: changes URL normalization, alias handling, or known-tool filtering
 - `researcher-policy`: changes the ResearcherAgent's search, scope decisions, rejection handling, or metadata extraction
@@ -113,7 +113,7 @@ Planning rules:
 - If feedback includes explicit instructions like "include/list/search for X" or "exclude Y", the plan must contain a direct corresponding action item. It may also include a generalized rule, but it must not drop the concrete example.
 - If a single feedback note contains both item-quality feedback and "should also include/list/search for X", split it into two plan items: one item-specific quality issue and one search coverage / missed-candidate issue.
 - For missed-candidate feedback, include the exact project names/URLs in the plan and add or revise Query Example Pool entries so future runs can rediscover similar systems.
-- Prompt-only changes may only edit `src/autoresearch_researcher/instructions/*.md`.
+- Prompt-only changes may only edit `src/discovery_forge/instructions/*.md`.
 - Code changes require a focused failing test first.
 - Do not create fallback behavior.
 - Keep scope verdict separate from metadata completeness.
@@ -131,8 +131,8 @@ Execute approved changes in the smallest safe order:
 
 For prompt-only changes:
 
-- Use the existing feedback-improvement design in `src/autoresearch_researcher/tools/improvement.py` when appropriate.
-- Edit only instruction markdown under `src/autoresearch_researcher/instructions/`.
+- Use the existing feedback-improvement design in `src/discovery_forge/tools/improvement.py` when appropriate.
+- Edit only instruction markdown under `src/discovery_forge/instructions/`.
 - Preserve prompt publishing through Weave `StringPrompt` objects.
 
 For code changes:

@@ -10,7 +10,7 @@ import pytest
 # ── RegistryEntry schema ──────────────────────────────────────────────────────
 
 def test_registry_entry_schema_fields():
-    from autoresearch_researcher.schemas.registry import RegistryEntry
+    from discovery_forge.schemas.registry import RegistryEntry
 
     e = RegistryEntry(
         slug="example-tool",
@@ -29,7 +29,7 @@ def test_registry_entry_schema_fields():
 # ── ToolRegistry class ────────────────────────────────────────────────────────
 
 def test_registry_load_creates_dirs(tmp_path):
-    from autoresearch_researcher.tools.registry import ToolRegistry
+    from discovery_forge.tools.registry import ToolRegistry
 
     reg = ToolRegistry.load(tmp_path / "_registry")
     assert (tmp_path / "_registry").exists()
@@ -37,8 +37,8 @@ def test_registry_load_creates_dirs(tmp_path):
 
 
 def test_registry_contains_url_normalization(tmp_path):
-    from autoresearch_researcher.schemas.tool_profile import ToolProfile
-    from autoresearch_researcher.tools.registry import ToolRegistry
+    from discovery_forge.schemas.tool_profile import ToolProfile
+    from discovery_forge.tools.registry import ToolRegistry
 
     reg = ToolRegistry.load(tmp_path / "_registry")
     assert reg.contains("https://github.com/example/tool") is False
@@ -55,7 +55,7 @@ def test_registry_contains_url_normalization(tmp_path):
 
 
 def test_registry_add_persists_profile_and_entry(tmp_path):
-    from autoresearch_researcher.tools.registry import ToolRegistry
+    from discovery_forge.tools.registry import ToolRegistry
 
     reg = ToolRegistry.load(tmp_path / "_registry")
     profile = _make_profile("example-tool", "Example", "https://github.com/example/tool")
@@ -77,7 +77,7 @@ def test_registry_add_persists_profile_and_entry(tmp_path):
 
 
 def test_registry_add_duplicate_does_not_create_second_entry(tmp_path):
-    from autoresearch_researcher.tools.registry import ToolRegistry
+    from discovery_forge.tools.registry import ToolRegistry
 
     reg = ToolRegistry.load(tmp_path / "_registry")
     profile = _make_profile("example-tool", "Example", "https://github.com/example/tool")
@@ -94,7 +94,7 @@ def test_registry_add_duplicate_does_not_create_second_entry(tmp_path):
 
 
 def test_registry_load_existing_entries(tmp_path):
-    from autoresearch_researcher.tools.registry import ToolRegistry
+    from discovery_forge.tools.registry import ToolRegistry
 
     reg1 = ToolRegistry.load(tmp_path / "_registry")
     reg1.add(_make_profile("a", "A", "https://a.com"), day="2026-05-19")
@@ -108,7 +108,7 @@ def test_registry_load_existing_entries(tmp_path):
 
 
 def test_registry_update_metadata_records_change(tmp_path):
-    from autoresearch_researcher.tools.registry import ToolRegistry
+    from discovery_forge.tools.registry import ToolRegistry
 
     reg = ToolRegistry.load(tmp_path / "_registry")
     profile = _make_profile("example-tool", "Example", "https://github.com/example/tool", stars=100)
@@ -128,7 +128,7 @@ def test_registry_update_metadata_records_change(tmp_path):
 
 
 def test_registry_update_metadata_no_change_returns_false(tmp_path):
-    from autoresearch_researcher.tools.registry import ToolRegistry
+    from discovery_forge.tools.registry import ToolRegistry
 
     reg = ToolRegistry.load(tmp_path / "_registry")
     profile = _make_profile("example", "Example", "https://x.com", stars=100)
@@ -140,7 +140,7 @@ def test_registry_update_metadata_no_change_returns_false(tmp_path):
 
 
 def test_registry_get_all_profiles(tmp_path):
-    from autoresearch_researcher.tools.registry import ToolRegistry
+    from discovery_forge.tools.registry import ToolRegistry
 
     reg = ToolRegistry.load(tmp_path / "_registry")
     reg.add(_make_profile("a", "A", "https://a.com"), day="2026-05-19")
@@ -155,7 +155,7 @@ def test_registry_get_all_profiles(tmp_path):
 # ── helper ────────────────────────────────────────────────────────────────────
 
 def _make_profile(slug: str, name: str, url: str, stars: int = 100):
-    from autoresearch_researcher.schemas.tool_profile import ToolProfile
+    from discovery_forge.schemas.tool_profile import ToolProfile
     return ToolProfile(
         slug=slug,
         name=name,

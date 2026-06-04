@@ -60,7 +60,7 @@ def _bootstrap_day_dir(day_dir: Path) -> None:
 
 
 def test_build_feed_output_writes_manifest_items_and_raw(tmp_path):
-    from autoresearch_researcher.tools.feed import build_feed_output
+    from discovery_forge.tools.feed import build_feed_output
 
     day_dir = tmp_path / "2026-05-28"
     day_dir.mkdir()
@@ -117,7 +117,7 @@ def test_build_feed_output_writes_manifest_items_and_raw(tmp_path):
 
 
 def test_feed_metadata_for_profile_matches_manifest_item_projection():
-    from autoresearch_researcher.tools.feed import feed_metadata_for_profile
+    from discovery_forge.tools.feed import feed_metadata_for_profile
 
     metadata = feed_metadata_for_profile({
         "slug": "tool-a",
@@ -136,7 +136,7 @@ def test_feed_metadata_for_profile_matches_manifest_item_projection():
 
 
 def test_build_feed_output_hashes_are_stable(tmp_path):
-    from autoresearch_researcher.tools.feed import build_feed_output
+    from discovery_forge.tools.feed import build_feed_output
 
     day_dir = tmp_path / "2026-05-28"
     day_dir.mkdir()
@@ -152,7 +152,7 @@ def test_build_feed_output_hashes_are_stable(tmp_path):
 
 
 def test_build_feed_output_computes_delta_against_previous_manifest(tmp_path):
-    from autoresearch_researcher.tools.feed import build_feed_output, dedupe_key_for_url
+    from discovery_forge.tools.feed import build_feed_output, dedupe_key_for_url
 
     previous_day_dir = tmp_path / "2026-05-27"
     previous_day_dir.mkdir()
@@ -202,7 +202,7 @@ def test_build_feed_output_computes_delta_against_previous_manifest(tmp_path):
 
 
 def test_build_feed_output_uses_explicit_previous_manifest_path(tmp_path):
-    from autoresearch_researcher.tools.feed import build_feed_output, dedupe_key_for_url
+    from discovery_forge.tools.feed import build_feed_output, dedupe_key_for_url
 
     backup_dir = tmp_path / "2026-05-28_backup_1"
     backup_dir.mkdir()
@@ -238,7 +238,7 @@ def test_build_feed_output_uses_explicit_previous_manifest_path(tmp_path):
 
 
 def test_build_feed_output_uses_generated_at_only_when_page_published_unknown(tmp_path):
-    from autoresearch_researcher.tools.feed import build_feed_output
+    from discovery_forge.tools.feed import build_feed_output
 
     day_dir = tmp_path / "2026-05-28"
     day_dir.mkdir()
@@ -263,7 +263,7 @@ def test_build_feed_output_uses_generated_at_only_when_page_published_unknown(tm
 
 
 def test_build_feed_output_summarizes_curated_repository_as_reference(tmp_path):
-    from autoresearch_researcher.tools.feed import build_feed_output
+    from discovery_forge.tools.feed import build_feed_output
 
     day_dir = tmp_path / "2026-05-28"
     day_dir.mkdir()
@@ -293,7 +293,7 @@ def test_build_feed_output_summarizes_curated_repository_as_reference(tmp_path):
 
 
 def test_build_feed_output_rewrites_named_description_into_action_phrase(tmp_path):
-    from autoresearch_researcher.tools.feed import build_feed_output
+    from discovery_forge.tools.feed import build_feed_output
 
     day_dir = tmp_path / "2026-05-28"
     day_dir.mkdir()
@@ -324,7 +324,7 @@ def test_build_feed_output_rewrites_named_description_into_action_phrase(tmp_pat
 
 
 def test_build_feed_output_dedupes_items_by_dedupe_key(tmp_path):
-    from autoresearch_researcher.tools.feed import build_feed_output
+    from discovery_forge.tools.feed import build_feed_output
 
     day_dir = tmp_path / "2026-05-28"
     day_dir.mkdir()
@@ -345,7 +345,7 @@ def test_build_feed_output_dedupes_items_by_dedupe_key(tmp_path):
 
 
 def test_build_feed_output_does_not_use_source_sha_as_weave_trace_fallback(tmp_path):
-    from autoresearch_researcher.tools.feed import build_feed_output
+    from discovery_forge.tools.feed import build_feed_output
 
     day_dir = tmp_path / "2026-05-28"
     day_dir.mkdir()
@@ -362,7 +362,7 @@ def test_build_feed_output_does_not_use_source_sha_as_weave_trace_fallback(tmp_p
 
 
 def test_build_feed_output_removes_stale_item_files(tmp_path):
-    from autoresearch_researcher.tools.feed import build_feed_output
+    from discovery_forge.tools.feed import build_feed_output
 
     day_dir = tmp_path / "2026-05-28"
     day_dir.mkdir()

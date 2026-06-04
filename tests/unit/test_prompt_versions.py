@@ -8,7 +8,7 @@ def _write_instruction_files(tmp_path):
 
 
 def test_load_local_instruction_prompts_returns_researcher(tmp_path):
-    from autoresearch_researcher.tools.prompts import load_local_instruction_prompts
+    from discovery_forge.tools.prompts import load_local_instruction_prompts
 
     _write_instruction_files(tmp_path)
 
@@ -20,7 +20,7 @@ def test_load_local_instruction_prompts_returns_researcher(tmp_path):
 
 
 def test_publish_instruction_prompts_uses_registered_prompt_content(tmp_path, monkeypatch):
-    from autoresearch_researcher.tools import prompts
+    from discovery_forge.tools import prompts
 
     _write_instruction_files(tmp_path)
     published_names = []
@@ -50,7 +50,7 @@ def test_publish_instruction_prompts_uses_registered_prompt_content(tmp_path, mo
 
 
 def test_prompt_metadata_helpers_return_hashes_refs_and_contents(tmp_path):
-    from autoresearch_researcher.tools.prompts import (
+    from discovery_forge.tools.prompts import (
         load_local_instruction_prompts,
         prompt_contents,
         prompt_hashes,

@@ -38,7 +38,7 @@ def test_tests_conftest_exists():
 
 
 def test_src_package_structure():
-    src = ROOT / "src" / "autoresearch_researcher"
+    src = ROOT / "src" / "discovery_forge"
     assert src.exists()
     assert (src / "__init__.py").exists()
     assert (src / "agents").exists()

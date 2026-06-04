@@ -1,4 +1,4 @@
-# autoresearch-researcher
+# discovery-forge
 
 A hands-on demo of the **annotation → prompt-improvement** loop on top of W&B Weave.
 
@@ -27,8 +27,8 @@ Each run is told what is already covered (an exclusion list built from the regis
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                    autoresearch-researcher                        │
-│   CLI: autoresearch-researcher run --day 2026-05-19               │
+│                    discovery-forge                        │
+│   CLI: discovery-forge run --day 2026-05-19               │
 └─────────────────────────┬─────────────────────────────────────────┘
                           ▼
 ┌─────────────────────────────────────────────────────────────────┐
@@ -138,7 +138,7 @@ Requires Python 3.11+ and [`uv`](https://docs.astral.sh/uv/).
 
 ```bash
 git clone <repo>
-cd autoresearch-researcher
+cd discovery-forge
 uv sync
 cp .env.example .env
 # Fill OPENAI_API_KEY (+ SERPER_API_KEY for the default backend), WANDB_API_KEY in .env
@@ -154,7 +154,7 @@ cp .env.example .env
 | `WANDB_API_KEY` | ✅ | W&B Weave tracing |
 | `GITHUB_TOKEN` | optional | Raises GitHub API rate limit |
 | `WANDB_ENTITY` | optional | Defaults to `wandb-smle` |
-| `WANDB_PROJECT` | optional | Defaults to `autoresearch-researcher` |
+| `WANDB_PROJECT` | optional | Defaults to `discovery-forge` |
 
 For a keys-minimal hands-on run, use `--search-backend openai` (hosted `WebSearchTool`) so only `OPENAI_API_KEY` is required.
 
@@ -165,7 +165,7 @@ For a keys-minimal hands-on run, use `--search-backend openai` (hosted `WebSearc
 ### Run a daily briefing
 
 ```bash
-uv run autoresearch-researcher run --day 2026-05-19
+uv run discovery-forge run --day 2026-05-19
 ```
 
 Flags:
@@ -185,7 +185,7 @@ Flags:
 After annotating per-tool `research_run_<i>` calls in Weave (e.g. via a `D{YYYYMMDD}_Research` annotation queue):
 
 ```bash
-uv run autoresearch-researcher feedback ingest --day 2026-05-19
+uv run discovery-forge feedback ingest --day 2026-05-19
 ```
 
 Produces `feedback_events.jsonl` and `prompt_improvement_notes.md`. This does not rewrite the prompt automatically; it creates reviewable notes for improving `instructions/researcher.md`.
@@ -193,7 +193,7 @@ Produces `feedback_events.jsonl` and `prompt_improvement_notes.md`. This does no
 ### Propose prompt improvements
 
 ```bash
-uv run autoresearch-researcher improve propose --day 2026-05-19
+uv run discovery-forge improve propose --day 2026-05-19
 ```
 
 Runs the `PromptImprovementProposerAgent`. It reads every free-text feedback event in `feedback_events.jsonl` together with the current contents of `instructions/researcher.md`, then writes a concrete plan to `prompt_improvement_plan.md` (failure modes + exact prompt edits, including diff snippets). The proposer never modifies Python code; anything that requires a code change is listed under "Out of scope (code change required)". Traced in Weave as `improve_propose`.
@@ -201,7 +201,7 @@ Runs the `PromptImprovementProposerAgent`. It reads every free-text feedback eve
 ### Apply prompt improvements
 
 ```bash
-uv run autoresearch-researcher improve apply --day 2026-05-19
+uv run discovery-forge improve apply --day 2026-05-19
 ```
 
 Runs the `PromptImprovementApplierAgent`. It reads `prompt_improvement_plan.md` and the current `researcher.md`, then calls `update_researcher_instructions` to rewrite the prompt only if the plan proposes a change. A summary is written to `prompt_improvement_applied.md`. Python code is never touched. Whenever the file is updated, `improve apply` immediately publishes the new content as a Weave `StringPrompt`, so the next daily run picks up the new version automatically. Traced in Weave as `improve_apply`.
@@ -209,14 +209,14 @@ Runs the `PromptImprovementApplierAgent`. It reads `prompt_improvement_plan.md` 
 ### Offline evaluation
 
 ```bash
-uv run autoresearch-researcher eval run-researcher --dataset-path <dataset.jsonl> --output-dir eval_runs/researcher-<date>
+uv run discovery-forge eval run-researcher --dataset-path <dataset.jsonl> --output-dir eval_runs/researcher-<date>
 ```
 
 Runs a Weave Evaluation of the ResearcherAgent's accept/reject decision against a fixed dataset (`verdict_quality_scorer.is_correct`).
 
 ### Prompt versioning
 
-Every non-dry run publishes the instruction file to Weave as `autoresearch-researcher-instructions`. The agent uses the registered Weave prompt content for that run. `run_metadata.json` records both `prompt_hashes` and `prompt_refs`, and each stage trace includes the prompt ref.
+Every non-dry run publishes the instruction file to Weave as `discovery-forge-instructions`. The agent uses the registered Weave prompt content for that run. `run_metadata.json` records both `prompt_hashes` and `prompt_refs`, and each stage trace includes the prompt ref.
 
 ### Annotation queue review fields
 
@@ -255,7 +255,7 @@ E2E tests are gated behind `@pytest.mark.expensive` so CI skips them by default.
 
 ## Customizing the agent prompt
 
-The agent instructions live as a separate Markdown file under `src/autoresearch_researcher/instructions/`, so you can tune the prompt without touching code.
+The agent instructions live as a separate Markdown file under `src/discovery_forge/instructions/`, so you can tune the prompt without touching code.
 
 ```
 instructions/
