@@ -5,6 +5,8 @@ build-backend = "hatchling.build"
 [project]
 name = "discovery-forge"
 version = "0.1.0"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 description = "Daily tool briefing agent for experiment automation research"
 requires-python = ">=3.11"
 dependencies = [
