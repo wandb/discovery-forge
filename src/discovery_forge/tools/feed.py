@@ -54,16 +54,18 @@ def build_feed_output(
 
     new_ids = _ids_from_jsonl(day_dir / "_new_candidates.jsonl")
     updated_ids = _ids_from_jsonl(day_dir / "_updated_tools.jsonl")
-    weave_trace_ids = _weave_trace_ids_by_slug(day_dir / "_profile_runs.jsonl")
+    daily_ids = new_ids | updated_ids
+    weave_traces = _weave_traces_by_slug(day_dir / "_profile_runs.jsonl")
 
     manifest_items = []
-    deduped_profiles = _dedupe_profiles_by_key(profiles, new_ids, updated_ids)
+    daily_profiles = _profiles_for_daily_ids(profiles, daily_ids)
+    deduped_profiles = _dedupe_profiles_by_key(daily_profiles, new_ids, updated_ids)
     for profile in _sort_profiles(deduped_profiles):
         item_id = _profile_item_id(profile)
         item = _profile_to_item(
             profile,
             generated_at=generated_at,
-            weave_trace_id=weave_trace_ids.get(item_id),
+            weave_trace=weave_traces.get(item_id),
         )
         item_path = items_dir / f"{item['id']}.json"
         _write_json(item_path, item)
@@ -78,7 +80,6 @@ def build_feed_output(
 
     _write_raw_artifacts(day_dir)
 
-    removed_item_ids = _removed_item_ids(previous_items_by_key, manifest_items)
     manifest_new_ids = sorted(
         item["id"] for item in manifest_items if item["changeStatus"] == "new"
     )
@@ -105,7 +106,7 @@ def build_feed_output(
         "delta": {
             "newItemIds": manifest_new_ids,
             "updatedItemIds": manifest_updated_ids,
-            "removedItemIds": removed_item_ids,
+            "removedItemIds": [],
         },
     }
     manifest["manifestHash"] = stable_hash(manifest)
@@ -151,7 +152,7 @@ def _profile_to_item(
     profile: dict[str, Any],
     *,
     generated_at: str,
-    weave_trace_id: str | None,
+    weave_trace: dict[str, str] | None,
 ) -> dict[str, Any]:
     item_id = _profile_item_id(profile)
     canonical_url = _canonical_url(profile)
@@ -165,23 +166,33 @@ def _profile_to_item(
         profile.get("last_commit")
     )
     summary = _item_summary(profile, fallback_description=page_description)
+    page_metadata = {
+        "description": page_description,
+        "image": page_image_url,
+        "siteName": _site_name(canonical_url),
+    }
+    if weave_trace:
+        page_metadata.update({
+            "weave_call_id": weave_trace["weave_call_id"],
+            "weave_agent_trace_id": weave_trace.get("agent_trace_id"),
+            "weave_trace_url": weave_trace.get("trace_url"),
+            "weave_workflow_name": weave_trace.get("workflow_name"),
+        })
+
+    weave_call_id = profile.get("weave_call_id") or (weave_trace or {}).get("weave_call_id")
     item = {
         "schemaVersion": 1,
         "id": item_id,
         "dedupeKey": dedupe_key_for_url(canonical_url, fallback_id=item_id),
         "canonicalUrl": canonical_url,
         "pageTitle": page_title,
-        "pageMetadata": {
-            "description": page_description,
-            "image": page_image_url,
-            "siteName": _site_name(canonical_url),
-        },
+        "pageMetadata": page_metadata,
         "title": profile.get("name") or item_id,
         "summary": summary,
         "tags": _tags(profile),
         "pagePublishedAt": page_published_at,
         "sourceUpdatedAt": source_updated_at,
-        "weaveTraceId": profile.get("weave_call_id") or weave_trace_id,
+        "weaveTraceId": weave_call_id,
         "metadata": {
             "githubStars": profile.get("stars"),
             "license": profile.get("license") or "unknown",
@@ -299,11 +310,11 @@ def _ids_from_jsonl(path: Path) -> set[str]:
     return ids
 
 
-def _weave_trace_ids_by_slug(path: Path) -> dict[str, str]:
-    """Return per-profile Weave call IDs captured during this daily run."""
-    trace_ids: dict[str, str] = {}
+def _weave_traces_by_slug(path: Path) -> dict[str, dict[str, str]]:
+    """Return per-profile Weave call metadata captured during this daily run."""
+    traces: dict[str, dict[str, str]] = {}
     if not path.exists():
-        return trace_ids
+        return traces
     for line in path.read_text().splitlines():
         if not line.strip():
             continue
@@ -311,8 +322,13 @@ def _weave_trace_ids_by_slug(path: Path) -> dict[str, str]:
         slug = row.get("slug")
         weave_call_id = row.get("weave_call_id")
         if slug and weave_call_id:
-            trace_ids[str(slug)] = str(weave_call_id)
-    return trace_ids
+            trace = {"weave_call_id": str(weave_call_id)}
+            for key in ("agent_trace_id", "trace_url", "workflow_name"):
+                value = row.get(key)
+                if isinstance(value, str) and value:
+                    trace[key] = value
+            traces[str(slug)] = trace
+    return traces
 
 
 def _profile_item_id(profile: dict[str, Any]) -> str:
@@ -360,6 +376,12 @@ def _dedupe_profiles_by_key(
         ):
             by_key[key] = profile
     return list(by_key.values())
+
+
+def _profiles_for_daily_ids(profiles: list[dict[str, Any]], daily_ids: set[str]) -> list[dict[str, Any]]:
+    if not daily_ids:
+        return []
+    return [profile for profile in profiles if _profile_item_id(profile) in daily_ids]
 
 
 def _profile_priority(profile: dict[str, Any], new_ids: set[str], updated_ids: set[str]) -> tuple[int, int, str]:

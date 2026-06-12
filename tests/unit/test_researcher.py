@@ -4,13 +4,13 @@ import json
 from pathlib import Path
 
 ROOT = Path(__file__).parent.parent.parent
-INSTR = ROOT / "src" / "discovery_forge" / "instructions" / "researcher.md"
+INSTR = ROOT / "src" / "discovery_forge" / "agents" / "researcher.md"
 
 
 # ── instructions ──────────────────────────────────────────────────────────────
 
 def test_researcher_instructions_exists():
-    assert INSTR.exists(), "instructions/researcher.md must exist"
+    assert INSTR.exists(), "agents/researcher.md must exist"
 
 
 def test_researcher_instructions_no_hardcoded_tool_names():

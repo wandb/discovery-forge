@@ -1,0 +1,97 @@
+name: Daily Research
+
+on:
+  # KST daily 8:00 AM = UTC previous day 23:00
+  schedule:
+    - cron: '0 23 * * *'
+  workflow_dispatch:
+    inputs:
+      day:
+        description: 'Run date in YYYY-MM-DD (defaults to current KST date)'
+        required: false
+        type: string
+      max_cost_usd:
+        description: 'Cost ceiling in USD'
+        required: false
+        type: string
+        default: '15'
+      max_tools:
+        description: 'Maximum ResearcherAgent runs / feed items to attempt'
+        required: false
+        type: string
+        default: '10'
+      search_backend:
+        description: 'Search backend: serper, perplexity, or openai'
+        required: false
+        type: choice
+        default: serper
+        options:
+          - serper
+          - perplexity
+          - openai
+      since:
+        description: 'Search recency window'
+        required: false
+        type: choice
+        default: month
+        options:
+          - day
+          - week
+          - month
+          - year
+          - all
+
+permissions:
+  contents: read
+
+concurrency:
+  group: daily-research
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Sync dependencies
+        run: uv sync
+
+      - name: Resolve day id
+        id: day
+        run: |
+          if [ -n "${{ inputs.day }}" ]; then
+            echo "day=${{ inputs.day }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "day=$(TZ=Asia/Seoul date +'%Y-%m-%d')" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run daily research
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          SERPER_API_KEY: ${{ secrets.SERPER_API_KEY }}
+          PERPLEXITY_API_KEY: ${{ secrets.PERPLEXITY_API_KEY }}
+          WANDB_API_KEY: ${{ secrets.WANDB_API_KEY }}
+          WANDB_ENTITY: ${{ secrets.WANDB_ENTITY }}
+          WANDB_PROJECT: ${{ secrets.WANDB_PROJECT }}
+          DB_DISCOVERY_FORGE_URL: ${{ secrets.DB_DISCOVERY_FORGE_URL }}
+          DB_DISCOVERY_FORGE_AUTH_TOKEN: ${{ secrets.DB_DISCOVERY_FORGE_AUTH_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          uv run python main.py \
+            --day "${{ steps.day.outputs.day }}" \
+            --max-tools "${{ inputs.max_tools || '10' }}" \
+            --max-cost-usd "${{ inputs.max_cost_usd || '15' }}" \
+            --search-backend "${{ inputs.search_backend || 'serper' }}" \
+            --since "${{ inputs.since || 'month' }}"

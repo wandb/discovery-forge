@@ -16,6 +16,12 @@ def test_pyproject_has_required_dependencies():
         assert dep in content, f"Missing dependency: {dep}"
 
 
+def test_pyproject_does_not_expose_console_cli():
+    content = (ROOT / "pyproject.toml").read_text()
+    assert "[project.scripts]" not in content
+    assert "discovery_forge.cli" not in content
+
+
 def test_env_example_exists():
     assert (ROOT / ".env.example").exists()
 
@@ -42,6 +48,5 @@ def test_src_package_structure():
     assert src.exists()
     assert (src / "__init__.py").exists()
     assert (src / "agents").exists()
-    assert (src / "instructions").exists()
     assert (src / "tools").exists()
     assert (src / "schemas").exists()

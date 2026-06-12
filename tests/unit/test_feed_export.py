@@ -54,6 +54,9 @@ def _bootstrap_day_dir(day_dir: Path) -> None:
             "day": "2026-05-28",
             "slug": "tool-a",
             "weave_call_id": "call-tool-a",
+            "agent_trace_id": "trace-tool-a",
+            "trace_url": "https://wandb.ai/example/project/weave/traces/trace-tool-a",
+            "workflow_name": "research_Tool A",
         }) + "\n"
     )
     _write_profile(day_dir / "tools")
@@ -95,6 +98,10 @@ def test_build_feed_output_writes_manifest_items_and_raw(tmp_path):
         "description": "Source description from GitHub.",
         "image": "https://example.com/social-preview.png",
         "siteName": "GitHub",
+        "weave_agent_trace_id": "trace-tool-a",
+        "weave_call_id": "call-tool-a",
+        "weave_trace_url": "https://wandb.ai/example/project/weave/traces/trace-tool-a",
+        "weave_workflow_name": "research_Tool A",
     }
     assert item_file["title"] == "Tool A"
     assert item_file["summary"] == (
@@ -197,7 +204,7 @@ def test_build_feed_output_computes_delta_against_previous_manifest(tmp_path):
     assert manifest["delta"] == {
         "newItemIds": [],
         "updatedItemIds": ["tool-a"],
-        "removedItemIds": ["removed-tool"],
+        "removedItemIds": [],
     }
 
 
@@ -342,6 +349,42 @@ def test_build_feed_output_dedupes_items_by_dedupe_key(tmp_path):
     assert manifest["items"][0]["id"] == "tool-a"
     assert manifest["delta"]["newItemIds"] == ["tool-a"]
     assert manifest["delta"]["updatedItemIds"] == []
+
+
+def test_build_feed_output_exports_only_daily_profiles_from_registry(tmp_path):
+    from discovery_forge.tools.feed import build_feed_output
+
+    class Registry:
+        def __init__(self, profiles_dir: Path) -> None:
+            self.profiles_dir = profiles_dir
+
+    day_dir = tmp_path / "2026-05-28"
+    day_dir.mkdir()
+    _bootstrap_day_dir(day_dir)
+    registry_dir = tmp_path / "_registry" / "profiles"
+    _write_profile(registry_dir, slug="tool-a")
+    _write_profile(registry_dir, slug="old-tool")
+
+    old_profile_path = registry_dir / "old-tool.md"
+    old_profile = yaml.safe_load(old_profile_path.read_text().split("---", 2)[1])
+    old_profile["name"] = "Old Tool"
+    old_profile["github_url"] = "https://github.com/example/old-tool"
+    old_profile_path.write_text(
+        "---\n"
+        + yaml.dump(old_profile, sort_keys=False)
+        + "---\n\n# Old Tool\n\nOld Tool was found on an earlier day.\n"
+    )
+
+    manifest = build_feed_output(
+        day_dir,
+        registry=Registry(registry_dir),
+        day="2026-05-28",
+        source_sha="abc123",
+    )
+
+    assert [item["id"] for item in manifest["items"]] == ["tool-a"]
+    assert (day_dir / "items" / "tool-a.json").exists()
+    assert not (day_dir / "items" / "old-tool.json").exists()
 
 
 def test_build_feed_output_does_not_use_source_sha_as_weave_trace_fallback(tmp_path):

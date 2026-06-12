@@ -50,19 +50,56 @@ def test_budget_exceeded_error_carries_info():
     assert "5.1" in str(err) or "5.0" in str(err)
 
 
+# ── weave_project_path ────────────────────────────────────────────────────────
+
+def test_weave_project_path_returns_entity_and_project(monkeypatch):
+    from discovery_forge.observability import weave_project_path
+
+    monkeypatch.setenv("WANDB_ENTITY", "my-team")
+    monkeypatch.setenv("WANDB_PROJECT", "my-project")
+    assert weave_project_path() == "my-team/my-project"
+
+
+def test_weave_project_path_requires_entity(monkeypatch):
+    from discovery_forge.observability import weave_project_path
+
+    monkeypatch.delenv("WANDB_ENTITY", raising=False)
+    monkeypatch.setenv("WANDB_PROJECT", "my-project")
+    with pytest.raises(ValueError, match="WANDB_ENTITY"):
+        weave_project_path()
+
+
+def test_weave_project_path_requires_project(monkeypatch):
+    from discovery_forge.observability import weave_project_path
+
+    monkeypatch.setenv("WANDB_ENTITY", "my-team")
+    monkeypatch.delenv("WANDB_PROJECT", raising=False)
+    with pytest.raises(ValueError, match="WANDB_PROJECT"):
+        weave_project_path()
+
+
+def test_weave_project_path_rejects_empty_project(monkeypatch):
+    from discovery_forge.observability import weave_project_path
+
+    monkeypatch.setenv("WANDB_ENTITY", "my-team")
+    monkeypatch.setenv("WANDB_PROJECT", "   ")
+    with pytest.raises(ValueError, match="WANDB_PROJECT"):
+        weave_project_path()
+
+
 # ── init_observability — unit tests with mocked weave ────────────────────────
 
-def test_init_observability_calls_weave_init_once(mock_weave):
-    from discovery_forge.orchestrator import init_observability
-    with patch("discovery_forge.orchestrator.set_trace_processors") as mock_stp:
+def test_init_observability_calls_weave_init_once(mock_weave, wandb_project_env):
+    from discovery_forge.observability import init_observability
+    with patch("discovery_forge.observability.set_trace_processors"):
         init_observability(day_id="2026-05-28")
     mock_weave["init"].assert_called_once()
 
 
-def test_init_observability_uses_replace_not_add(mock_weave):
+def test_init_observability_uses_replace_not_add(mock_weave, wandb_project_env):
     """set_trace_processors must be called with a list (replace), not add_trace_processor."""
-    from discovery_forge.orchestrator import init_observability
-    with patch("discovery_forge.orchestrator.set_trace_processors") as mock_stp:
+    from discovery_forge.observability import init_observability
+    with patch("discovery_forge.observability.set_trace_processors") as mock_stp:
         init_observability(day_id="2026-05-28")
     mock_stp.assert_called_once()
     # Must be called with a list argument
@@ -70,11 +107,11 @@ def test_init_observability_uses_replace_not_add(mock_weave):
     assert len(args) == 1 and isinstance(args[0], list)
 
 
-def test_init_observability_does_not_call_add_trace_processor(mock_weave):
+def test_init_observability_does_not_call_add_trace_processor(mock_weave, wandb_project_env):
     """Forbidden: add_trace_processor — must use set_trace_processors for replacement."""
-    from discovery_forge.orchestrator import init_observability
-    with patch("discovery_forge.orchestrator.set_trace_processors") as mock_stp, \
-         patch("discovery_forge.orchestrator.add_trace_processor", create=True) as mock_add:
+    from discovery_forge.observability import init_observability
+    with patch("discovery_forge.observability.set_trace_processors"), \
+         patch("discovery_forge.observability.add_trace_processor", create=True) as mock_add:
         init_observability(day_id="2026-05-28")
     # add_trace_processor should never be called
     mock_add.assert_not_called()
@@ -120,15 +157,15 @@ def test_orchestrator_exposes_run_briefing():
     assert inspect.iscoroutinefunction(orchestrator.run_briefing)
 
 
-def test_orchestrator_exposes_init_observability():
-    from discovery_forge import orchestrator
-    assert hasattr(orchestrator, "init_observability")
+def test_observability_exposes_init_observability():
+    from discovery_forge import observability
+    assert hasattr(observability, "init_observability")
 
 
-def test_orchestrator_imports_weave_not_in_tests(mock_weave):
+def test_orchestrator_imports_weave_not_in_tests(mock_weave, wandb_project_env):
     """Verify orchestrator uses mocked weave in unit test context."""
-    from discovery_forge.orchestrator import init_observability
-    with patch("discovery_forge.orchestrator.set_trace_processors"):
+    from discovery_forge.observability import init_observability
+    with patch("discovery_forge.observability.set_trace_processors"):
         init_observability("2026-05-28")
     # weave.init was called via the mock (not a real network call)
     assert mock_weave["init"].called

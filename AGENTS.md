@@ -3,7 +3,7 @@
 This file is the **build guide** Claude Code reads on every iteration.
 It is the guide for the *coder building the agents*, not the runtime guide for the research agent.
 
-For feedback-driven work, also read `skills/discovery-forge-feedback-improvement/SKILL.md`. It is the shared workflow for turning Weave annotations and local annotation seeds into prompt or code improvements.
+For annotation-driven work, use `skills/annotation-improvement/SKILL.md`. For offline evaluation failure analysis, use `skills/offline-eval-improvement/SKILL.md`. Both are coding-agent workflows for using W&B Weave evidence, official W&B Skills guidance, and direct Weave Python SDK/API queries to plan, apply, publish, and validate prompt improvements.
 
 ---
 
@@ -12,7 +12,9 @@ For feedback-driven work, also read `skills/discovery-forge-feedback-improvement
 - `AGENTS.md` — the canonical build guide and source of truth for coding agents.
 - `README.md` — agent architecture diagram, daily accumulation model, CLI usage.
 - `PRD.md` — User Stories with checkboxes, scope definition, and validation criteria.
-- `skills/discovery-forge-feedback-improvement/SKILL.md` — workflow for using Weave annotations and local feedback seeds to guide prompt or code improvements.
+- `skills/annotation-improvement/SKILL.md` — workflow for using Weave SDK/API trace and annotation evidence to plan, apply, validate, and publish prompt improvements.
+- `skills/offline-eval-improvement/SKILL.md` — workflow for using Weave Evaluation failed rows and `verdict_quality_scorer` evidence to improve and compare prompt versions.
+- `skills/build-verdict-dataset/SKILL.md` — workflow for building `verdict_quality_dataset` from `research_annotation` evidence, refining rows against the rubric, and publishing a new versioned Weave Dataset.
 
 ---
 
@@ -22,7 +24,7 @@ For feedback-driven work, also read `skills/discovery-forge-feedback-improvement
 - Package manager: **`uv`** (do not use pip)
 - Framework: `openai-agents` (OpenAI Agents SDK)
 - **Observability: `weave` (W&B Weave) — auto-integrated via the OpenAI Agents SDK trace processor**
-- Models: `gpt-5.4-mini` for the `ResearcherAgent` and the prompt-improvement proposer/applier
+- Models: `gpt-5.4-mini` for the `ResearcherAgent`
 - Search: Serper by default; Perplexity `sonar-pro` via `--search-backend perplexity`; OpenAI hosted `WebSearchTool` via `--search-backend openai` (no extra search key)
 - Tests: `pytest`, `pytest-asyncio`
 - Env loading: `python-dotenv` from `.env`
@@ -30,7 +32,10 @@ For feedback-driven work, also read `skills/discovery-forge-feedback-improvement
  - `SERPER_API_KEY` (required for the default Serper search; not needed with `--search-backend openai`)
  - `PERPLEXITY_API_KEY` (required only for `--search-backend perplexity`)
   - `WANDB_API_KEY` (required for Weave tracing)
+  - `WANDB_ENTITY` (required for Weave tracing)
+  - `WANDB_PROJECT` (required for Weave tracing; `.env.example` uses `discovery-forge`)
   - `GITHUB_TOKEN` (optional, raises GitHub API rate limit)
+  - `DB_DISCOVERY_FORGE_URL` / `DB_DISCOVERY_FORGE_AUTH_TOKEN` (optional, publish feed to Agentforge Turso; skip when unset)
 
 ---
 
@@ -55,13 +60,17 @@ uv run pytest tests/unit/test_researcher.py::test_scope_filter_deep_research_too
 # Add a new dependency
 uv add <package>
 
-# Run the CLI
-uv run discovery-forge run --day 2026-05-19 [--max-tools N --max-cost-usd N --dry-run --rerun --search-backend serper|perplexity|openai --since day|week|month|year|all]
+# Run the daily ResearcherAgent loop
+uv run python main.py --day 2026-05-19 [--max-tools N --max-cost-usd N --dry-run --rerun --search-backend serper|perplexity|openai --since day|week|month|year|all]
 
-# Ingest Weave annotations, then improve the prompt (prompt-only loop)
-uv run discovery-forge feedback ingest --day 2026-05-19
-uv run discovery-forge improve propose --day 2026-05-19
-uv run discovery-forge improve apply --day 2026-05-19
+# Preferred feedback-driven improvement path:
+# read and follow skills/annotation-improvement/SKILL.md
+
+# Preferred offline-eval improvement path:
+# read and follow skills/offline-eval-improvement/SKILL.md
+
+# Run offline evaluation against the published Weave dataset
+uv run python evaluate.py --verdict-dataset-ref '<verdict-dataset-ref>'
 ```
 
 ---
@@ -69,30 +78,31 @@ uv run discovery-forge improve apply --day 2026-05-19
 ## Directory Layout
 
 ```
+main.py                      # daily ResearcherAgent entrypoint
+evaluate.py                 # offline eval entrypoint (loads pinned published Weave dataset refs)
+
 src/discovery_forge/
 ├── __init__.py
-├── cli.py                  # entrypoint (Typer)
 ├── orchestrator.py         # single-agent loop + cost budget + tracing
 ├── agents/
 │   ├── __init__.py
 │   ├── researcher.py       # the single discover+profile ResearcherAgent
-│   └── improver.py         # prompt-improvement proposer + applier
-├── instructions/           # agent prompts (kept separate from code)
-│   ├── researcher.md
-│   ├── prompt_proposer.md
-│   └── prompt_applier.md
+│   ├── researcher_tools.py
+│   ├── researcher.md       # ResearcherAgent prompt
+│   └── researcher_base.md  # baseline prompt used for comparison/reset
+├── evaluation/             # offline evaluation runners, scorers, dataset helpers + docs
+│   ├── __init__.py
+│   ├── verdict.py          # verdict quality eval (run_researcher_evaluation, scorers)
+│   ├── datasets.py         # load/publish helpers + dataset name/ref constants
+│   └── OFFLINE_EVALUATION.{ko,ja,en}.md  # eval workflow docs (datasets live in Weave)
 ├── tools/                  # function_tool definitions + helpers
 │   ├── __init__.py
 │   ├── persistence.py      # save_tool_profile, save_source, load_sources
 │   ├── profiles.py         # load_tool_profiles_from_dir (YAML front-matter)
 │   ├── github.py           # fetch_github_metadata
 │   ├── search.py           # serper / perplexity backends (openai uses WebSearchTool)
-│   ├── citations.py        # SourceRegistry + verify_citations (retained, not yet wired in)
 │   ├── registry.py         # ToolRegistry (global accumulator)
-│   ├── feedback.py         # ingest Weave feedback by research call id
-│   ├── improvement.py      # propose/apply prompt-improvement ops
 │   ├── prompts.py          # Weave StringPrompt versioning for researcher.md
-│   ├── evaluation.py       # Weave Evaluation for the researcher scope/profile decision
 │   └── feed.py             # Agentforge manifest/items/raw export
 └── schemas/                # pydantic models
     ├── __init__.py
@@ -188,7 +198,7 @@ import weave
 from agents import RunConfig, set_trace_processors
 
 def init_observability(day_id: str):
-    weave.init("wandb-smle/discovery-forge")
+    weave.init(weave_project_path())  # requires WANDB_ENTITY and WANDB_PROJECT from .env
     set_trace_processors([DiscoveryForgeWeaveTracingProcessor()])
 
 # Tag each per-tool research run via attributes
@@ -224,21 +234,23 @@ Always pass a named `RunConfig` to `Runner.run()` so Weave shows `research_run_{
 
 The ResearcherAgent's visible output is a reviewer-friendly profile review (accepted profile or rejection), built from `save_tool_profile_tool` / `save_rejected_profile_tool` calls.
 
-Feedback-driven improvement is a two-stage AI loop and is **prompt-only**. Neither stage may modify Python code, schemas, registry, orchestrator, CLI, or deployment files.
+Feedback-driven improvement is **prompt-only** by default. The skill-guided workflow may edit `src/discovery_forge/agents/researcher.md`; it must not modify Python code, schemas, registry, orchestrator, CLI, or deployment files as part of applying feedback.
 
-- `improve propose` runs `PromptImprovementProposerAgent` (`instructions/prompt_proposer.md`). Inputs: every free-text human feedback event in `feedback_events.jsonl` plus the full current contents of `researcher.md`. Tool: `save_improvement_plan(content)`. Output: `prompt_improvement_plan.md` — a concrete plan with failure modes, exact proposed edits, and diff snippets. Items needing Python changes go under `## Out of scope (code change required)`.
-- `improve apply` runs `PromptImprovementApplierAgent` (`instructions/prompt_applier.md`). Inputs: `prompt_improvement_plan.md` and the current `researcher.md`. Tool: `update_researcher_instructions`, which overwrites the instruction file with a full new Markdown body, and only if the plan proposes a change. A summary is written to `prompt_improvement_applied.md`. Whenever the applier actually changes the file, `improve apply` also calls `publish_instruction_prompts` so the new content becomes a Weave `StringPrompt` version in the same run; the resulting `prompt_refs` are returned in the trace output. This pipeline has no manual git-diff review step, so publishing is unconditional.
+The workflow is skill-guided:
+
+- Read and follow `skills/annotation-improvement/SKILL.md`.
+- Use live Weave evidence through W&B Skills guidance and direct Weave Python SDK/API queries (`CallsQueryReq`, `CallsFilter`), plus `_profile_runs.jsonl`, human annotations, runnable scorer feedback, and the current `researcher.md`.
+- Write `src/discovery_forge/agents/improve_history/<day>/plan.md`, edit only `src/discovery_forge/agents/researcher.md`, publish the updated Weave `StringPrompt`, write `src/discovery_forge/agents/improve_history/<day>/applied.md`, and run focused validation.
+- For offline evaluation failures, follow `skills/offline-eval-improvement/SKILL.md`; inspect the evaluation parent/child calls, keep datasets and scorers read-only, then rerun the same pinned dataset for comparison.
 
 On every non-dry run, publish the `researcher.md` instruction file as a Weave `StringPrompt` object and construct the agent from the registered prompt content. Record prompt hashes and Weave prompt refs in `run_metadata.json` and trace metadata.
-
-Trace both improvement steps. `improve propose` must call the `improve_propose` Weave op and return the plan Markdown in the call output. `improve apply` must call the `improve_apply` Weave op and return changed prompt file paths plus an `apply_markdown` summary in the call output.
 
 Stage root outputs must be reviewer-friendly for Weave Annotation Queues. `research_run_{i}` should expose `profile_review_markdown`, `verdict`, key metadata, source IDs, and prompt refs. Day-scoped annotations use the queue name `D{YYYYMMDD}_Research` and route to `researcher.md`.
 
 **Tracing your own functions**: decorate plain functions with `@weave.op` to include them in traces.
 ```python
 @weave.op
-def verify_citations(report: str, sources: list[Source]) -> list[str]:
+def score_profile(profile: dict) -> dict:
     ...
 ```
 
@@ -266,14 +278,14 @@ def verify_citations(report: str, sources: list[Source]) -> list[str]:
 ```python
 from unittest.mock import AsyncMock, patch
 
-async def test_profiler_filters_out_deep_research():
+async def test_researcher_filters_out_deep_research():
     with patch("agents.Runner.run") as mock_run:
         mock_run.return_value.final_output = ToolProfile(
             slug="some-deep-research-tool",
             autonomy_level="analyst",  # does not actually run experiments
             ...
         )
-        result = await profile_candidate(candidate)
+        result = await research_candidate(candidate)
         assert result.is_rejected
  assert "deep research" in result.verdict_reason.lower()
 ```
@@ -304,7 +316,7 @@ async def test_e2e_smoke_run(tmp_path):
 
 ## Rules for writing agent instructions
 
-Keep instructions in `src/discovery_forge/instructions/{agent_name}.md`.
+Keep instructions in `src/discovery_forge/agents/{agent_name}.md`.
 
 Why:
 1. Tune prompts without touching code
@@ -312,42 +324,6 @@ Why:
 3. Version history of how prompts evolved
 
 `load_instructions("researcher")` reads the file and returns a string.
-
----
-
-## Citation integrity (US6 — retained, not yet wired in)
-
-`tools/citations.py` (`SourceRegistry`, `verify_citations`) and `Source` are kept for
-future use (e.g. attaching per-tool sources to feed items). The single-agent pipeline
-no longer produces a draft to verify, and `save_source_tool` is currently a stub, so
-nothing in the runtime path calls these yet. Do not delete without removing the matching
-tests in `tests/unit/test_us6_citations.py`.
-
-```python
-# schemas/sources.py
-class Source(BaseModel):
-    id: int
-    url: str
-    title: str
-    fetched_at: datetime
-    used_in: list[str]  # tool slugs
-
-# Citation verification helper (report vs known sources)
-import re
-def verify_citations(report: str, sources: list[Source]) -> list[str]:
-    cited_ids = {int(m) for m in re.findall(r'\[\^(\d+)\]', report)}
-    available_ids = {s.id for s in sources}
-
-    errors = []
-    if not cited_ids.issubset(available_ids):
-        errors.append(f"Missing source IDs: {cited_ids - available_ids}")
-
-    orphans = available_ids - cited_ids
-    if orphans:
-        errors.append(f"Orphan sources (in jsonl but never cited): {orphans}")
-
-    return errors
-```
 
 ---
 
@@ -369,7 +345,7 @@ def verify_citations(report: str, sources: list[Source]) -> list[str]:
 - ❌ Do not expose API keys in code, tests, comments, or git.
 - ❌ Do not omit `--max-cost-usd` in E2E tests.
 - ❌ Do not bypass the ResearcherAgent's scope filter (deep-research / curated-list tools quietly slipping in is the most common failure).
-- ❌ Do not hardcode an Agent's instructions in code. Always load from `instructions/*.md`.
+- ❌ Do not hardcode an Agent's instructions in code. Always load from `agents/*.md`.
 - ❌ Do not call the built-in `WebSearchTool` on a plain ChatCompletions model (Responses API only). It is only wired in for `--search-backend openai`, which assumes a Responses-API model (gpt-4o / gpt-5 family).
 - ❌ **Do not call `weave.init()` more than once per process** — exactly one call from the orchestrator entrypoint.
 - ❌ **Use `set_trace_processors([DiscoveryForgeWeaveTracingProcessor()])` to *replace*, not add** — never use `add_trace_processor`.
@@ -394,14 +370,11 @@ For every User Story:
 
 <!-- Ralph fills in below this line. -->
 - US1: After `uv sync`, a stale `VIRTUAL_ENV` env pointing to a different venv triggers a warning — `uv run` still works, but the warning shows up whenever a different venv was already active. Safe to ignore.
-- US2: When a Typer CLI calls an async orchestrator via `asyncio.run()`, tests must `AsyncMock` patch at `discovery_forge.cli.run_briefing` — the wrong module path silently no-ops the mock.
+- US2: Entry point tests patch `discovery_forge.orchestrator.run_briefing` through `run_research()` and load root scripts such as `main.py`; patching stale CLI module paths silently no-ops the mock.
 - US3: `@function_tool` definitions need to capture `output_dir` via a closure inside the agent factory. Passing the path as a tool arg means the model has to know it; the `build_*_agent(output_dir)` pattern with closure binding is the right shape.
 - US4: Splitting a pure helper like `is_experiment_automation()` out of the agent module lets you unit-test the scope filter without LLM mocking. Layering rule-based filters under LLM judgement is the key to test-ability.
 - US5: WriterAgent's `read_tool_profiles_tool` should strip the `_body` field and return JSON to keep the context window small. Fetch the full body via `get_tool_body_tool(slug)` only when needed — much more token-efficient.
-- US6: `SourceRegistry` must rewrite the file when re-registering an existing URL (to refresh `used_in`). Append-only JSONL risks duplicate IDs, so dedup needs an in-memory dict + full rewrite.
 - US7: `CostBudget.add()` calls `check()` internally and raises immediately. To set up an "already over budget" state in tests, set `budget._total` directly and then call `check()` separately — calling `add()` will raise during setup.
 - US8: `difflib.unified_diff` lines end with `\n`, so classify regexes need `line.rstrip()` first — otherwise the `^` anchor collides with trailing whitespace and produces false positives.
 - US9: `shutil.move(str(src), str(dst))` should pass strings — Python ≤3.11 can fail with `Path` objects directly. Wrapping with `str()` is the safe form.
-- Smoke e2e: in dry-run mode, `sources.jsonl` must align 1:1 with `[^N]` footnotes in `draft.md` for `verify_citations` to pass — generate source_ids and footnote numbers in lockstep so there are no orphan citations.
-- Trace redesign: keep `run_briefing()` as the plain orchestrator and use named Agents SDK traces for visible stages. Stage 2 should display as `stage2_profile_{slug} → ProfilerAgent`; daily rollups stay in `run_metadata.json` unless they need real trace detail.
-- US11/US12 rewrite: rule-based classification of feedback by a `prompt_issue_type` field does not survive free-text human annotations. `improve propose` and `improve apply` are now real LLM agents (`PromptImprovementProposerAgent`, `PromptImprovementApplierAgent`) — propose synthesizes the plan, apply rewrites instruction files. Tests mock `_run_proposer_agent` / `_run_applier_agent` rather than the rule-based classifier.
+- Trace redesign: keep `run_briefing()` as the plain orchestrator and use named Agents SDK traces for visible stages. Each tool review should display as `research_run_{i} → ResearcherAgent`; daily rollups stay in `run_metadata.json` unless they need real trace detail.

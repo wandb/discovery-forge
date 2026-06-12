@@ -4,12 +4,6 @@ import json
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
-from typer.testing import CliRunner
-
-from discovery_forge.cli import app
-
-runner = CliRunner()
-
 
 # ── --rerun flag backs up existing folder ─────────────────────────────────────
 
@@ -43,21 +37,17 @@ def test_rerun_backup_naming_is_sequential(tmp_path):
         assert backup.exists()
 
 
-def test_rerun_cli_creates_backup_and_restarts(tmp_path):
-    with patch("discovery_forge.cli.run_briefing", new_callable=AsyncMock) as mock_run:
-        mock_run.return_value = None
+def test_rerun_entrypoint_creates_backup_and_restarts(tmp_path):
+    from discovery_forge.research_run import ResearchRunConfig, run_research
 
+    with patch("discovery_forge.observability.init_observability"), \
+        patch("discovery_forge.orchestrator.run_briefing", new_callable=AsyncMock):
         day_dir = tmp_path / "2026-05-28"
         day_dir.mkdir()
         (day_dir / "manifest.json").write_text("{}")
 
-        result = runner.invoke(app, [
-            "run", "--day", "2026-05-28",
-            "--output-dir", str(tmp_path),
-            "--rerun",
-        ])
+        run_research(ResearchRunConfig(day="2026-05-28", output_dir=tmp_path, rerun=True))
 
-        assert result.exit_code == 0, result.output
         backups = [d for d in tmp_path.iterdir() if "backup" in d.name]
         assert len(backups) >= 1
         metadata = json.loads((day_dir / "run_metadata.json").read_text())
@@ -67,17 +57,17 @@ def test_rerun_cli_creates_backup_and_restarts(tmp_path):
 # ── slug derivation ───────────────────────────────────────────────────────────
 
 def test_name_to_slug_basic():
-    from discovery_forge.orchestrator import name_to_slug
+    from discovery_forge.review import name_to_slug
     assert name_to_slug("Tool Alpha") == "tool-alpha"
 
 
 def test_name_to_slug_special_chars():
-    from discovery_forge.orchestrator import name_to_slug
+    from discovery_forge.review import name_to_slug
     assert name_to_slug("My-Tool v2.0!") == "my-tool-v2-0"
 
 
 def test_name_to_slug_no_leading_trailing_dash():
-    from discovery_forge.orchestrator import name_to_slug
+    from discovery_forge.review import name_to_slug
     slug = name_to_slug("  Fancy Tool  ")
     assert not slug.startswith("-")
     assert not slug.endswith("-")

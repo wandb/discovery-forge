@@ -6,15 +6,54 @@ A single agent runs once a day to survey **autonomous research tools in the expe
 
 ---
 
+## This Is the Hands-On Starting Point
+
+> **For workshop participants:** This repository's `main` branch *is* the hands-on
+> starting point. There is no separate setup branch to check out — clone the repo,
+> stay on `main`, and follow the steps below.
+
+`discovery-forge` is built to be edited live during the session. You will:
+
+1. Run the daily ResearcherAgent loop and watch the Weave traces it produces.
+2. Annotate those `research_run_<i>` traces in Weave.
+3. Use the project skills to turn that feedback into a prompt-only change to
+   `researcher.md`, then rerun and compare.
+4. Close the loop with offline evaluation against a published Weave dataset.
+
+Everything you touch lives in this repo: the agent prompt (`researcher.md`), the
+improvement skills (`skills/`).
+
+### Companion Project: AI Engineering Dojo
+
+This hands-on goes together with the **AI Engineering Dojo**:
+<https://github.com/wandb/ai_engineering_dojo>.
+
+The AI Engineering Dojo is the learning-content repository for building,
+evaluating, monitoring, and continuously improving Auto Research Agents. Its
+main learning subject *is* Discovery Forge — the Dojo owns the learning content
+structure, domain specification, evaluation/monitoring concepts, and W&B Weave
+integration guidance, while this repository is the Discovery Forge codebase that
+participants actually run and improve.
+
+In short: read the **AI Engineering Dojo** for the lesson flow, domain spec, and
+evaluation design, and use **this repo** as the live ResearcherAgent
+implementation you edit during the session.
+
+---
+
 ## Overview
 
 One agent does discovery **and** profiling, run sequentially up to `--max-tools` times.
 
 ```
-Orchestrator (CLI)
-  └─ ResearcherAgent (×N)  — find ONE new experiment-automation tool, verify it,
-                             and save a canonical profile (or reject it)
-                             → _registry/profiles/{slug}.md → items/{slug}.json + manifest.json
+main.py
+  └─ run_research()
+      └─ orchestrator.run_briefing()
+          └─ ResearcherAgent (×N)  — find ONE experiment-automation tool,
+                                     verify it, and save a canonical profile
+                                     (or reject it)
+                                     → _registry/profiles/{slug}.md
+                                     → items/{slug}.json + manifest.json
 ```
 
 Each run is told what is already covered (an exclusion list built from the registry + this run's rejections) so the N runs don't converge on the same tools.
@@ -25,110 +64,70 @@ Each run is told what is already covered (an exclusion list built from the regis
 
 ## Agent Architecture
 
+The orchestrator (`orchestrator.py`) loads the tool registry once, then runs the
+`ResearcherAgent` sequentially up to `--max-tools` times. Each run gets an
+exclusion list (registry + this run's saves) and a recency hint, writes its own
+`search_web` queries, verifies a candidate, and either profiles or rejects it.
+A `CostBudget` enforces `--max-cost-usd` with graceful shutdown, and after the
+loop the feed builder emits `items/*.json` + `manifest.json`.
+
+The `ResearcherAgent` (`gpt-5.4-mini`) has one job: find a new in-scope tool,
+verify it, and profile or reject it. Its tools are `search_web`, `is_known_tool`,
+`fetch_github_metadata_tool`, `save_source_tool`, `save_tool_profile_tool`,
+`save_rejected_profile_tool`, and `report_no_new_tool`. The **scope filter**
+("does this tool actually run experiments?") is the most important safety net and
+the main target of the feedback loop — deep-research tools and curated lists
+slipping in is the most common failure, and exactly what reviewers annotate.
+
+Each run becomes one independent Weave root call, so reviewers can open and
+annotate it directly:
+
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                    discovery-forge                        │
-│   CLI: discovery-forge run --day 2026-05-19               │
-└─────────────────────────┬─────────────────────────────────────────┘
-                          ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    Orchestrator (orchestrator.py)                 │
-│  • Sequential loop: run ResearcherAgent up to --max-tools times   │
-│  • Loads ToolRegistry from daily_runs/_registry/ once per run     │
-│  • Builds a per-run exclusion list (registry + this run's saves)  │
-│  • Passes iteration/exclusion/recency; agent writes search queries│
-│  • CostBudget: enforces --max-cost-usd, graceful shutdown         │
-│  • Weave traces: one research_run_{i} trace per tool            │
-│  • After the loop: build_feed_output → items/* + manifest.json    │
-└─────────────────────────┬─────────────────────────────────────────┘
-                          ▼
-              ┌────────────────────────────┐
-              │       ResearcherAgent       │   (one run per tool)
-              │                             │
-              │ Role: find one new in-scope │
-              │ tool, verify it, profile or │
-              │ reject it                   │
-              │                             │
-              │ Tools:                      │
-              │  search_web (serper default)│
-              │  is_known_tool              │
-              │  fetch_github_metadata_tool │
-              │  save_source_tool           │
-              │  save_tool_profile_tool     │
-              │  save_rejected_profile_tool │
-              │  report_no_new_tool         │
-              │                             │
-              │ Scope filter: "does this    │
-              │  run experiments?" → reject │
-              │  if NO                      │
-              │                             │
-              │ Model: gpt-5.4-mini         │
-              └────────────────────────────┘
-
-Data flow:
-──────────────────────────────────────────────────────────────────
-daily_runs/_registry/
-  tools.jsonl                       ← global tool index (one row per tool)
-  profiles/{slug}.md                ← canonical ToolProfile per tool
-
-daily_runs/{day}/
-  manifest.json                     ← Agentforge feed manifest
-  items/{slug}.json                 ← one structured feed item per accepted profile
-  raw/                              ← copy of source artifacts for debugging/sync fallback
-  _profile_runs.jsonl               ← slug/status/workflow/agent_trace_id/weave_call_id per trace
-  _new_candidates.jsonl             ← tools profiled for the first time today
-  _updated_tools.jsonl             ← tools whose stars/last_commit changed
-  _rejected_profiles.jsonl          ← out-of-scope tools (with reasons)
-  _no_new_tool.jsonl                ← agent's "nothing new left" signals
-  feedback_events.jsonl             ← Weave human feedback ingested by call id
-  prompt_improvement_notes.md       ← maintainer-facing prompt improvement notes
-  run_metadata.json                 ← run_id, prompt hashes/refs, counts, tokens, cost
-
-Weave trace model:
-──────────────────────────────────────────────────────────────────
-📦 research_run_1                       ← independent root call for human review
-  └─ ResearcherAgent                      ← agent span for the tool investigation
-      ├─ openai.responses.create          ← model decides next action
-      ├─ search_web                       ← configured search backend tool
-      ├─ fetch_github_metadata_tool       ← GitHub metadata lookup
-      └─ save_tool_profile_tool           ← accepted profile persistence
-📦 research_run_2                       ← one root call per tool
-📦 research_run_3                       ← rejected tools are reviewable too
-...
-
-_profile_runs.jsonl links the day/run_id to each tool's workflow_name, agent_trace_id, and weave_call_id.
+📦 research_run_1                  ← independent root call for human review
+  └─ ResearcherAgent               ← agent span for the tool investigation
+      ├─ openai.responses.create   ← model decides next action
+      ├─ search_web                ← configured search backend tool
+      ├─ fetch_github_metadata_tool
+      └─ save_tool_profile_tool    ← accepted profile persistence
+📦 research_run_2                  ← one root call per tool (rejected tools too)
 ```
 
-The scope filter is the most important safety net and the main target of the feedback loop: deep-research tools and curated lists quietly slipping in is the most common failure, and it is exactly what reviewers annotate.
+> For the lesson narrative around this agent (what it does and why), see the AI
+> Engineering Dojo `understand-the-agent` chapter.
 
 ---
 
 ## Daily Accumulation Model
 
+The registry is global and persistent; each day writes its own run folder. Known
+tools (`is_known_tool(url)`) are skipped to save search / LLM cost, accepted
+profiles go straight into the registry, and metadata changes (stars, last commit)
+are logged to `_updated_tools.jsonl`. Every run is recorded in
+`_profile_runs.jsonl` with the `run_id`, status, `workflow_name`,
+`agent_trace_id`, prompt hash, and `weave_call_id` so a human can review and
+annotate that tool's trace directly.
+
 ```
 daily_runs/
-├── _registry/                       ← global, persistent across days
-│   ├── tools.jsonl                  # cumulative tool index
-│   └── profiles/{slug}.md           # canonical profiles
+├── _registry/                  ← global, persistent across days
+│   ├── tools.jsonl             # cumulative tool index
+│   └── profiles/{slug}.md      # canonical ToolProfile per tool
 │
-├── 2026-05-19/                        ← per-day run + change log
-│   ├── run_metadata.json             # run_id, prompt hashes/refs, counts, tokens, cost
-│   ├── manifest.json                 # Agentforge feed manifest
-│   ├── items/{slug}.json             # structured feed items
-│   ├── _profile_runs.jsonl           # per-tool trace links
-│   ├── _new_candidates.jsonl         # tools profiled for the first time
-│   ├── _updated_tools.jsonl          # tools whose metadata changed
-│   ├── _rejected_profiles.jsonl      # out-of-scope tools
-│   ├── feedback_events.jsonl         # optional, after feedback ingest
-│   └── prompt_improvement_notes.md   # optional, after feedback ingest
-│
-└── 2026-05-20/
-    └── ...
+└── {day}/                      ← per-day run + change log
+    ├── run_metadata.json       # run_id, prompt hashes/refs, counts, tokens, cost
+    ├── manifest.json           # Agentforge feed manifest
+    ├── items/{slug}.json       # structured feed items
+    ├── _profile_runs.jsonl     # per-tool trace links (incl. weave_call_id)
+    ├── _new_candidates.jsonl   # tools profiled for the first time
+    ├── _updated_tools.jsonl    # tools whose stars/last_commit changed
+    └── _rejected_profiles.jsonl# out-of-scope tools (with reasons)
 ```
 
-Each daily run loads the registry, then loops: every ResearcherAgent run gets the exclusion list and calls `is_known_tool(url)` before committing to a candidate, so already-known tools are skipped (saving search / LLM cost). Accepted profiles are written straight into the registry; metadata changes (stars, last commit) on existing tools are detected and logged to `_updated_tools.jsonl`. Each run is recorded in `_profile_runs.jsonl` with the `run_id`, status, `workflow_name`, `agent_trace_id`, prompt hash, and Weave call ID so a human can review and annotate that tool trace directly. After the loop, the feed builder turns the registry profiles into `items/*.json` + `manifest.json`.
-
-The ResearcherAgent writes its own `search_web` queries each run, using the Query Example Pool in `instructions/researcher.md` as inspiration plus the run's exclusion list and recency hint. This keeps the implementation simple and makes query strategy prompt-editable: human annotations can improve the pool, rejection wording, or search instructions through the normal prompt-only loop.
+The agent writes its own `search_web` queries from the Query Example Pool in
+`agents/researcher.md` plus the exclusion list and recency hint, so query
+strategy stays prompt-editable. Skill-guided prompt improvement records live
+beside the prompt, not under `daily_runs`:
+`src/discovery_forge/agents/improve_history/<day>/{plan,applied}.md`.
 
 ---
 
@@ -136,12 +135,16 @@ The ResearcherAgent writes its own `search_web` queries each run, using the Quer
 
 Requires Python 3.11+ and [`uv`](https://docs.astral.sh/uv/).
 
+Clone the repo and stay on `main` — that branch is the hands-on starting point.
+
 ```bash
 git clone <repo>
 cd discovery-forge
+git checkout main   # the hands-on starting point; no separate setup branch
 uv sync
 cp .env.example .env
-# Fill OPENAI_API_KEY (+ SERPER_API_KEY for the default backend), WANDB_API_KEY in .env
+# Fill OPENAI_API_KEY, WANDB_API_KEY, WANDB_ENTITY, WANDB_PROJECT
+# and SERPER_API_KEY for the default backend.
 ```
 
 ## Environment variables
@@ -149,84 +152,105 @@ cp .env.example .env
 | Variable | Required | Purpose |
 |----------|----------|---------|
 | `OPENAI_API_KEY` | ✅ | OpenAI model calls (and the `openai` search backend) |
-| `SERPER_API_KEY` | default backend | Default ResearcherAgent web search; not needed with `--search-backend openai` |
-| `PERPLEXITY_API_KEY` | optional | Alternative `--search-backend perplexity` search backend (sonar-pro) |
+| `SERPER_API_KEY` | ✅ | Default ResearcherAgent web search　|
 | `WANDB_API_KEY` | ✅ | W&B Weave tracing |
-| `GITHUB_TOKEN` | optional | Raises GitHub API rate limit |
-| `WANDB_ENTITY` | optional | Defaults to `wandb-smle` |
-| `WANDB_PROJECT` | optional | Defaults to `discovery-forge` |
+| `WANDB_ENTITY` | ✅ | Your W&B entity for Weave traces and eval results |
+| `WANDB_PROJECT` | ✅ | W&B project; `.env.example` uses `discovery-forge` for the hands-on |
 
-For a keys-minimal hands-on run, use `--search-backend openai` (hosted `WebSearchTool`) so only `OPENAI_API_KEY` is required.
+The minimal `.env.example` contains the required/default hands-on keys. Add optional keys only when using the matching backend or integration.
 
 ---
 
 ## Usage
 
+### Hands-On Default Flow
+
+Start with the three root entrypoint files. They are intentionally small so a
+learner can open each one and follow the flow into `src/discovery_forge/`.
+
+```bash
+# 1. Run the daily ResearcherAgent loop
+uv run python main.py \
+  --day 2026-05-19 \
+  --max-tools 5 \
+  --max-cost-usd 5 \
+  --search-backend serper
+
+# 2. Improve from Weave annotations with the project skill
+# read and follow skills/annotation-improvement/SKILL.md
+
+# 3. Run offline eval against the published Weave dataset
+uv run python evaluate.py \
+  --verdict-dataset-ref '<verdict-dataset-ref>'
+
+# 4. Improve from offline eval failures with the project skill
+# read and follow skills/offline-eval-improvement/SKILL.md
+```
+
 ### Run a daily briefing
 
 ```bash
-uv run discovery-forge run --day 2026-05-19
+uv run python main.py --day 2026-05-19
 ```
+
+The default search backend is `serper`. For a keys-minimal hands-on run, pass
+`--search-backend openai` explicitly.
 
 Flags:
 
 | Flag | Default | Purpose |
 |------|---------|---------|
-| `--day` | (required) | ISO day id (e.g. `2026-05-19`) |
-| `--max-tools` | 20 | Maximum ResearcherAgent runs (≈ max tools profiled) |
+| `--day` | today | ISO day id (e.g. `2026-05-19`) |
+| `--output-dir` | `daily_runs` | Base output directory |
+| `--max-tools` | 10 | Maximum ResearcherAgent runs (≈ max tools profiled) |
 | `--max-cost-usd` | 20.0 | Hard cost ceiling — graceful shutdown on overage |
 | `--search-backend` | `serper` | Search backend: `serper`, `perplexity`, or `openai` |
 | `--since` | `month` | Restrict search results to this recency window: `day`, `week`, `month`, `year`, or `all` (no date filter). Honored by `serper`/`perplexity`; the `openai` backend can only be nudged via the prompt. |
 | `--dry-run` | false | Validate the pipeline with no LLM calls (synthetic profiles) |
 | `--rerun` | false | Allow re-running an existing day (auto-backs up the previous folder) |
 
-### Ingest Weave feedback
+### Improve From Weave Annotations
 
-After annotating per-tool `research_run_<i>` calls in Weave (e.g. via a `D{YYYYMMDD}_Research` annotation queue):
+After annotating per-tool `research_run_<i>` calls in Weave, run the prompt-only
+improvement loop by following the project skill:
 
-```bash
-uv run discovery-forge feedback ingest --day 2026-05-19
+```text
+skills/annotation-improvement/SKILL.md
 ```
 
-Produces `feedback_events.jsonl` and `prompt_improvement_notes.md`. This does not rewrite the prompt automatically; it creates reviewable notes for improving `instructions/researcher.md`.
-
-### Propose prompt improvements
-
-```bash
-uv run discovery-forge improve propose --day 2026-05-19
-```
-
-Runs the `PromptImprovementProposerAgent`. It reads every free-text feedback event in `feedback_events.jsonl` together with the current contents of `instructions/researcher.md`, then writes a concrete plan to `prompt_improvement_plan.md` (failure modes + exact prompt edits, including diff snippets). The proposer never modifies Python code; anything that requires a code change is listed under "Out of scope (code change required)". Traced in Weave as `improve_propose`.
-
-### Apply prompt improvements
-
-```bash
-uv run discovery-forge improve apply --day 2026-05-19
-```
-
-Runs the `PromptImprovementApplierAgent`. It reads `prompt_improvement_plan.md` and the current `researcher.md`, then calls `update_researcher_instructions` to rewrite the prompt only if the plan proposes a change. A summary is written to `prompt_improvement_applied.md`. Python code is never touched. Whenever the file is updated, `improve apply` immediately publishes the new content as a Weave `StringPrompt`, so the next daily run picks up the new version automatically. Traced in Weave as `improve_apply`.
+The skill reads the real trace feedback via the Weave SDK, plans the change,
+edits `researcher.md`, writes `improve_history/<day>/{plan,applied}.md`, and
+publishes the updated prompt. Datasets and scorers stay read-only evidence — the
+loop only edits the prompt. The Dojo `improve-from-annotations` and
+`review-and-annotation` chapters cover the queue setup and reviewer fields.
 
 ### Offline evaluation
 
+The eval dataset is published to Weave as `verdict_quality_dataset`; `evaluate.py`
+loads the pinned ref from `src/discovery_forge/evaluation/datasets.py`:
+
 ```bash
-uv run discovery-forge eval run-researcher --dataset-path <dataset.jsonl> --output-dir eval_runs/researcher-<date>
+uv run python evaluate.py                          # pinned dataset
+uv run python evaluate.py --verdict-dataset-ref '<ref>'   # override
 ```
 
-Runs a Weave Evaluation of the ResearcherAgent's accept/reject decision against a fixed dataset (`verdict_quality_scorer.is_correct`).
+To publish a new dataset version, use
+`discovery_forge.evaluation.datasets.publish_eval_dataset` and update the pinned
+ref. To improve the prompt from failed eval rows, follow
+`skills/offline-eval-improvement/SKILL.md` (same prompt-only loop, driven by
+failed `verdict_quality_scorer` cases). See the Dojo `build-eval-dataset` chapter
+for dataset design.
 
 ### Prompt versioning
 
-Every non-dry run publishes the instruction file to Weave as `discovery-forge-instructions`. The agent uses the registered Weave prompt content for that run. `run_metadata.json` records both `prompt_hashes` and `prompt_refs`, and each stage trace includes the prompt ref.
+Every non-dry run publishes the instruction file to Weave as
+`researcher_instructions`, and the agent uses that registered prompt for the run.
+`run_metadata.json` records both `prompt_hashes` and `prompt_refs`, and each
+trace includes the prompt ref.
 
-### Annotation queue review fields
-
-When adding traces to a Weave Annotation Queue, select the reviewer-friendly output fields from the `research_run_<i>` root call:
-
-| Stage trace | Recommended output fields |
-|-------------|---------------------------|
-| `research_run_<i>` | `profile_review_markdown`, `verdict`, `tool_name`, `primary_url`, `verdict_reason`, `autonomy_level`, `domains`, `key_limitations`, `profile_path`, `prompt_ref` |
-
-These fields let a reviewer judge the run from the queue without expanding the full trace tree.
+> If you configure Weave monitors/scorers in the UI, use the `Researcher-*`
+> names (`Researcher-quality-check`, `Researcher-category-check`,
+> `Quality-classifiers`). Older `Profiler-*` feedback is legacy evidence only.
 
 ---
 
@@ -245,23 +269,22 @@ uv run pytest tests/ --ignore=tests/e2e
 
 E2E tests are gated behind `@pytest.mark.expensive` so CI skips them by default.
 
----
-
-## Cost guardrails
-
-`--max-cost-usd` (default $20) triggers a graceful shutdown when the cumulative API spend exceeds the threshold. Outputs already on disk are kept, and the feed is still built from whatever profiles exist.
+> **Cost guardrail:** `--max-cost-usd` (default $20) triggers a graceful shutdown
+> when cumulative API spend exceeds the threshold. Outputs already on disk are
+> kept and the feed is still built from whatever profiles exist.
 
 ---
 
 ## Customizing the agent prompt
 
-The agent instructions live as a separate Markdown file under `src/discovery_forge/instructions/`, so you can tune the prompt without touching code.
+The agent instructions live as Markdown beside the agent implementation under `src/discovery_forge/agents/`, so you can tune the prompt without touching Python code.
 
 ```
-instructions/
-├── researcher.md       # scope definition, Query Example Pool, profiling + citation rules
-├── prompt_proposer.md  # how the improvement proposer behaves
-└── prompt_applier.md   # how the improvement applier rewrites researcher.md
+agents/
+├── researcher.py        # ResearcherAgent construction
+├── researcher_tools.py  # ResearcherAgent tool wiring
+├── researcher.md        # scope definition, Query Example Pool, profiling + citation rules
+└── improve_history/     # dated prompt improvement plans and applied summaries
 ```
 
 ---

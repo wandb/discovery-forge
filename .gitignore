@@ -1,6 +1,4 @@
 .env
-daily_runs/
-weekly_runs/
 __pycache__/
 .venv/
 wandb/
@@ -12,4 +10,4 @@ dist/
 *.egg-info/
 .DS_Store
 eval_runs/
-eval/eval_runs/
+daily_runs/

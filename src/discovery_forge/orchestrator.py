@@ -8,7 +8,6 @@ turns the saved profiles into ``items/*`` + ``manifest.json``.
 """
 
 import json
-import re
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
@@ -16,16 +15,13 @@ from typing import Any
 from uuid import uuid4
 
 import weave
-from agents import RunConfig, Runner, gen_trace_id, set_trace_processors
-from agents.tracing import AgentSpanData, FunctionSpanData, TaskSpanData, TurnSpanData
-from weave.integrations.openai_agents import openai_agents as weave_openai_agents
-from weave.integrations.openai_agents.openai_agents import WeaveTracingProcessor
-from weave.trace.context.weave_client_context import get_weave_client
+from agents import RunConfig, Runner, gen_trace_id
 
+from discovery_forge.observability import get_agent_trace_call_metadata
+from discovery_forge.review import name_to_slug
 from discovery_forge.tools.search import DEFAULT_SEARCH_BACKEND, RecencyWindow, SearchBackend
 
-
-_AGENT_TRACE_CALLS: dict[str, tuple[str | None, str | None]] = {}
+MAX_UNKNOWN_RETRIES = 5
 
 
 class BudgetExceededError(Exception):
@@ -55,192 +51,6 @@ class CostBudget:
     def check(self) -> None:
         if self._total > self._max:
             raise BudgetExceededError(spent=self._total, limit=self._max)
-
-
-def patch_weave_agent_span_names() -> None:
-    """Teach Weave's Agents integration to name SDK task/turn spans."""
-    if getattr(weave_openai_agents, "_discovery_forge_span_names_patched", False):
-        return
-
-    original_call_name = weave_openai_agents._call_name
-
-    def named_call(span) -> str:
-        span_data = getattr(span, "span_data", None)
-        if isinstance(span_data, TaskSpanData):
-            return span_data.name
-        if isinstance(span_data, TurnSpanData):
-            return f"{span_data.agent_name} turn {span_data.turn}"
-        return original_call_name(span)
-
-    weave_openai_agents._call_name = named_call
-    weave_openai_agents._discovery_forge_span_names_patched = True
-
-
-class DiscoveryForgeWeaveTracingProcessor(WeaveTracingProcessor):
-    """Weave processor tuned for readable single-agent research traces."""
-
-    def __init__(self) -> None:
-        super().__init__()
-        self._hidden_span_parent_calls = {}
-        self._accepted_profiles: dict[str, dict[str, Any]] = {}
-        self._rejected_profiles: dict[str, dict[str, Any]] = {}
-        self._no_new_results: dict[str, dict[str, Any]] = {}
-
-    def on_trace_start(self, trace) -> None:
-        super().on_trace_start(trace)
-        if trace.trace_id in self._trace_data:
-            self._trace_data[trace.trace_id]["metadata"] = _trace_metadata(trace)
-        trace_call = self._trace_calls.get(trace.trace_id)
-        if trace_call is not None:
-            _AGENT_TRACE_CALLS[trace.trace_id] = (
-                getattr(trace_call, "id", None),
-                getattr(trace_call, "ui_url", None) or getattr(trace_call, "url", None),
-            )
-
-    def on_trace_end(self, trace) -> None:
-        if (wc := get_weave_client()) is None:
-            return
-
-        tid = trace.trace_id
-        if tid not in self._trace_data or tid not in self._trace_calls:
-            return
-
-        trace_data = self._trace_data[tid]
-        self._ended_traces.add(tid)
-        call = self._trace_calls[tid]
-
-        # The workflow_name (research_run_{i}) is fixed before the search runs,
-        # so the tool isn't known yet. Once the agent has saved/rejected a profile
-        # we relabel the call's display name with the tool name for easy review.
-        if trace.name and trace.name.startswith("research_run_"):
-            self._set_research_display_name(call, tid)
-
-        output = {
-            "status": "completed",
-            "metrics": trace_data.get("metrics", {}),
-            "metadata": trace_data.get("metadata", {}),
-        }
-        output.update(self._review_output_for_trace(tid, trace.name))
-        wc.finish_call(call, output=output)
-
-        self._trace_calls.pop(tid, None)
-        self._trace_data.pop(tid, None)
-        self._ended_traces.discard(tid)
-        self._accepted_profiles.pop(tid, None)
-        self._rejected_profiles.pop(tid, None)
-        self._no_new_results.pop(tid, None)
-
-    def _get_parent_call(self, span):
-        parent_span_id = getattr(span, "parent_id", None)
-        if parent_span_id is not None:
-            if call := self._span_calls.get(parent_span_id):
-                return call
-            if call := self._hidden_span_parent_calls.get(parent_span_id):
-                return call
-        if call := self._trace_calls.get(span.trace_id):
-            return call
-        return None
-
-    def on_span_start(self, span) -> None:
-        span_data = getattr(span, "span_data", None)
-        if isinstance(span_data, TaskSpanData | TurnSpanData):
-            if parent_call := self._get_parent_call(span):
-                self._hidden_span_parent_calls[span.span_id] = parent_call
-            return
-
-        super().on_span_start(span)
-
-        # Tool/function spans are often children of hidden turn spans. Once the
-        # visible agent call exists, route that hidden turn's later children to it.
-        if isinstance(span_data, AgentSpanData):
-            agent_call = self._span_calls.get(span.span_id)
-            parent_span_id = getattr(span, "parent_id", None)
-            if agent_call is not None and parent_span_id in self._hidden_span_parent_calls:
-                self._hidden_span_parent_calls[parent_span_id] = agent_call
-
-    def on_span_end(self, span) -> None:
-        span_data = getattr(span, "span_data", None)
-        if isinstance(span_data, TaskSpanData | TurnSpanData):
-            return
-        if isinstance(span_data, FunctionSpanData):
-            self._collect_review_function_call(span)
-        super().on_span_end(span)
-
-    def _agent_log_data(self, span):
-        data = super()._agent_log_data(span)
-        if getattr(span.span_data, "name", None) == "ResearcherAgent":
-            data["outputs"] = self._research_review_output_for_trace(span.trace_id)
-        return data
-
-    def _review_output_for_trace(self, trace_id: str, trace_name: str) -> dict[str, Any]:
-        if trace_name and trace_name.startswith("research_run_"):
-            return self._research_review_output_for_trace(trace_id)
-        return {}
-
-    def _research_display_name(self, trace_id: str) -> str | None:
-        """Display name for a finished research trace, if the tool is known."""
-        profile = (
-            self._accepted_profiles.get(trace_id)
-            or self._rejected_profiles.get(trace_id)
-            or self._no_new_results.get(trace_id)
-        )
-        if not profile:
-            return None
-        name = profile.get("name") or profile.get("slug")
-        return f"research_{name}" if name else None
-
-    def _set_research_display_name(self, call, trace_id: str) -> None:
-        """Relabel a research call with a tool-specific display name (best-effort)."""
-        display = self._research_display_name(trace_id)
-        if not display:
-            return
-        setter = getattr(call, "set_display_name", None)
-        if setter is None:
-            return
-        try:
-            setter(display)
-        except Exception:
-            pass
-
-    def _research_review_output_for_trace(self, trace_id: str) -> dict[str, Any]:
-        if trace_id in self._accepted_profiles:
-            return profile_review_output(self._accepted_profiles[trace_id], status="accepted")
-        if trace_id in self._rejected_profiles:
-            return profile_review_output(self._rejected_profiles[trace_id], status="rejected")
-        if trace_id in self._no_new_results:
-            return profile_review_output(self._no_new_results[trace_id], status="no_new")
-        return profile_review_output({}, status="unknown")
-
-    def _collect_review_function_call(self, span) -> None:
-        tool_name = getattr(span.span_data, "name", "")
-        payload = parse_tool_input(getattr(span.span_data, "input", None))
-        if not payload:
-            return
-
-        trace_id = span.trace_id
-        if tool_name == "save_tool_profile_tool":
-            self._accepted_profiles[trace_id] = payload
-        elif tool_name == "save_rejected_profile_tool":
-            self._rejected_profiles[trace_id] = payload
-        elif tool_name == "report_no_new_tool":
-            self._no_new_results[trace_id] = {
-                "slug": "no-new-finding",
-                "name": "No new finding",
-                "verdict_reason": payload.get("reason"),
-            }
-
-
-def get_agent_trace_call_metadata(trace_id: str) -> tuple[str | None, str | None]:
-    """Return the Weave call id/url created for an Agents SDK trace."""
-    return _AGENT_TRACE_CALLS.get(trace_id, (None, None))
-
-
-def init_observability(day_id: str):
-    """Initialize W&B Weave tracing. Call exactly once per app lifecycle."""
-    client = weave.init("wandb-smle/discovery-forge")
-    patch_weave_agent_span_names()
-    set_trace_processors([DiscoveryForgeWeaveTracingProcessor()])
-    return client
 
 
 def create_run_id(day: str) -> str:
@@ -311,157 +121,6 @@ def update_metadata_counts(
     metadata_path.write_text(json.dumps(data, indent=2))
 
 
-def parse_tool_input(input_value: Any) -> dict[str, Any]:
-    """Parse an Agents SDK function-tool input payload into a dict."""
-    if isinstance(input_value, dict):
-        return input_value
-    if not isinstance(input_value, str):
-        return {}
-    try:
-        parsed = json.loads(input_value)
-    except json.JSONDecodeError:
-        return {}
-    return parsed if isinstance(parsed, dict) else {}
-
-
-def _md_cell(value: Any) -> str:
-    text = "unknown" if value is None or value == "" else str(value)
-    return text.replace("\n", "<br>").replace("|", "\\|")
-
-
-def _trace_metadata(trace) -> dict[str, Any]:
-    try:
-        exported = trace.export() or {}
-    except Exception:
-        return {}
-    metadata = exported.get("metadata")
-    return metadata if isinstance(metadata, dict) else {}
-
-
-def profile_review_output(profile: dict[str, Any], *, status: str) -> dict[str, Any]:
-    """Return Annotation Queue-friendly research output fields."""
-    from discovery_forge.tools.feed import feed_metadata_for_profile
-
-    slug = profile.get("slug") or "unknown"
-    primary_url = (
-        profile.get("github_url")
-        or profile.get("project_url")
-        or profile.get("paper_url")
-        or profile.get("url")
-        or "unknown"
-    )
-    verdict_reason = profile.get("verdict_reason")
-    tags = []
-    if status == "accepted":
-        tags = feed_metadata_for_profile(profile)["feed_tags"]
-    output = {
-        "profile_review_markdown": render_profile_review_markdown(profile, status=status),
-        "verdict": status,
-        "tool_name": profile.get("name") or "unknown",
-        "slug": slug,
-        "primary_url": primary_url,
-        "verdict_reason": verdict_reason,
-        "autonomy_level": profile.get("autonomy_level"),
-        "domains": profile.get("domains"),
-        "github_url": profile.get("github_url"),
-        "paper_url": profile.get("paper_url"),
-        "project_url": profile.get("project_url"),
-        "page_title": profile.get("page_title"),
-        "page_description": profile.get("page_description"),
-        "page_image_url": profile.get("page_image_url"),
-        "page_published_at": profile.get("page_published_at"),
-        "source_updated_at": profile.get("source_updated_at") or profile.get("last_commit"),
-        "key_limitations": profile.get("key_limitations"),
-        "tags": tags,
-    }
-    return output
-
-
-def render_profile_review_markdown(profile: dict[str, Any], *, status: str) -> str:
-    """Render ResearcherAgent output as a reviewer-friendly Markdown block."""
-    name = profile.get("name") or "unknown"
-    slug = profile.get("slug") or name_to_slug(name)
-    primary_url = (
-        profile.get("github_url")
-        or profile.get("project_url")
-        or profile.get("paper_url")
-        or profile.get("url")
-        or "unknown"
-    )
-    limitations = profile.get("key_limitations") or []
-    if isinstance(limitations, str):
-        limitations = [limitations]
-
-    lines = [
-        f"# Tool Profile Review: {name}",
-        "",
-        f"Verdict: {status}",
-        f"Slug: {slug}",
-        f"Primary URL: {primary_url}",
-        "",
-    ]
-
-    if status == "rejected":
-        lines.extend([
-            "## Scope Decision",
-            profile.get("verdict_reason") or "No verdict reason captured.",
-            "",
-        ])
-    elif status == "no_new":
-        lines.extend([
-            "## Scope Decision",
-            profile.get("verdict_reason") or "No verdict reason captured.",
-            "",
-        ])
-    elif status == "accepted":
-        lines.extend([
-            "## Scope Decision",
-            profile.get("autonomy_rationale") or "No autonomy rationale captured.",
-            "",
-            "## Key Metadata",
-            f"- Autonomy: {_md_cell(profile.get('autonomy_level'))}",
-            f"- Domains: {_md_cell(profile.get('domains'))}",
-            f"- License: {_md_cell(profile.get('license'))}",
-            f"- GitHub: {_md_cell(profile.get('github_url'))}",
-            f"- Paper: {_md_cell(profile.get('paper_url'))}",
-            f"- Project: {_md_cell(profile.get('project_url'))}",
-            f"- Page title: {_md_cell(profile.get('page_title'))}",
-            f"- Page published: {_md_cell(profile.get('page_published_at'))}",
-            f"- Source updated: {_md_cell(profile.get('source_updated_at') or profile.get('last_commit'))}",
-            f"- Resource requirements: {_md_cell(profile.get('resource_requirements'))}",
-            "",
-            "## Known Limitations",
-        ])
-        if limitations:
-            lines.extend(f"- {limitation}" for limitation in limitations)
-        else:
-            lines.append("- unknown")
-        lines.append("")
-    else:
-        lines.extend([
-            "## Scope Decision",
-            "The agent did not call save_tool_profile or save_rejected_profile, so the result is unresolved.",
-            "",
-        ])
-
-    lines.extend([
-        "## Reviewer Checklist",
-        "- Is the scope verdict correct?",
-        "- Are sources primary and sufficient?",
-        "- Is any metadata wrong or unverified?",
-        "- Should this feedback become a prompt improvement?",
-        "",
-    ])
-    return "\n".join(lines)
-
-
-def name_to_slug(name: str) -> str:
-    """Convert a tool name to a filesystem-safe slug."""
-    slug = name.strip().lower()
-    slug = re.sub(r"[^a-z0-9]+", "-", slug)
-    return slug.strip("-")
-
-
 def backup_run_dir(run_dir: Path) -> Path:
     """
     Rename run_dir to a numbered backup and return the backup path.
@@ -484,6 +143,14 @@ def append_profile_run(output_dir: Path, record: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a") as f:
         f.write(json.dumps(record, default=str) + "\n")
+
+
+def append_no_new_tool(output_dir: Path, reason: str) -> None:
+    """Append one no-new finding result to _no_new_tool.jsonl."""
+    path = output_dir / "_no_new_tool.jsonl"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a") as f:
+        f.write(json.dumps({"verdict_reason": reason}) + "\n")
 
 
 def load_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -631,7 +298,17 @@ def _iteration_outcome(
             "verdict_reason": row.get("verdict_reason"),
             "stop": False,
         }
-    return {"status": "unknown", "stop": True}
+    return {"status": "unknown", "stop": False}
+
+
+def _retry_research_prompt(base_prompt: str, attempt: int) -> str:
+    return (
+        f"{base_prompt}\n\n"
+        f"Retry attempt {attempt}: the previous attempt ended without calling "
+        "`save_tool_profile_tool`, `save_rejected_profile_tool`, or "
+        "`report_no_new_tool`. You must call exactly one of those final result "
+        "tools before ending this attempt."
+    )
 
 
 async def run_briefing(
@@ -712,6 +389,8 @@ async def run_briefing(
             attempted_count=_DRY_RUN_TOOL_COUNT,
         )
         update_metadata_costs(metadata_path, 0.0, 0, 0)
+        # Dry runs produce synthetic profiles, so they only write local files and
+        # never publish to the shared Turso feed.
         build_feed_output(output_dir, registry=None, day=day)
         return
 
@@ -724,10 +403,8 @@ async def run_briefing(
             rejected_before = len(load_jsonl(output_dir / "_rejected_profiles.jsonl"))
             no_new_before = len(load_jsonl(output_dir / "_no_new_tool.jsonl"))
 
-            workflow_name = f"research_run_{i + 1}"
-            trace_id = gen_trace_id()
             exclusion_block = build_exclusion_block(registry, output_dir)
-            research_prompt = render_research_prompt(
+            base_research_prompt = render_research_prompt(
                 day=day,
                 exclusion_block=exclusion_block,
                 iteration=i + 1,
@@ -743,49 +420,94 @@ async def run_briefing(
                 instructions_override=prompt_content_map["researcher"],
             )
 
-            with weave.attributes({
-                "day": day,
-                "run_id": run_id,
-                "stage": "research",
-                "iteration": i + 1,
-                "researcher_prompt_hash": prompt_hash_map["researcher"],
-                "researcher_prompt_ref": prompt_ref_map["researcher"],
-                "search_backend": search_backend,
-            }):
-                result = await Runner.run(
-                    agent,
-                    input=research_prompt,
-                    max_turns=40,
-                    run_config=stage_run_config(
-                        workflow_name=workflow_name,
-                        day=day,
-                        run_id=run_id,
-                        stage="research",
-                        trace_id=trace_id,
-                        metadata={
-                            "iteration": i + 1,
-                            "researcher_prompt_hash": prompt_hash_map["researcher"],
-                            "researcher_prompt_ref": prompt_ref_map["researcher"],
-                            "search_backend": search_backend,
-                        },
-                    ),
+            outcome: dict[str, Any] = {"status": "unknown", "stop": False}
+            usage = (0, 0, 0.0)
+            trace_id: str | None = None
+            workflow_name = f"research_run_{i + 1}"
+            for attempt in range(MAX_UNKNOWN_RETRIES + 1):
+                budget.check()
+                trace_id = gen_trace_id()
+                workflow_name = (
+                    f"research_run_{i + 1}"
+                    if attempt == 0
+                    else f"research_run_{i + 1}_retry_{attempt}"
+                )
+                research_prompt = (
+                    base_research_prompt
+                    if attempt == 0
+                    else _retry_research_prompt(base_research_prompt, attempt)
                 )
 
-            usage = _extract_usage(result)
-            prompt_tokens += usage[0]
-            completion_tokens += usage[1]
-            total_cost += usage[2]
+                with weave.attributes({
+                    "day": day,
+                    "run_id": run_id,
+                    "stage": "research",
+                    "iteration": i + 1,
+                    "attempt": attempt + 1,
+                    "researcher_prompt_hash": prompt_hash_map["researcher"],
+                    "researcher_prompt_ref": prompt_ref_map["researcher"],
+                    "search_backend": search_backend,
+                }):
+                    result = await Runner.run(
+                        agent,
+                        input=research_prompt,
+                        max_turns=40,
+                        run_config=stage_run_config(
+                            workflow_name=workflow_name,
+                            day=day,
+                            run_id=run_id,
+                            stage="research",
+                            trace_id=trace_id,
+                            metadata={
+                                "iteration": i + 1,
+                                "attempt": attempt + 1,
+                                "workflow_name": workflow_name,
+                                "researcher_prompt_hash": prompt_hash_map["researcher"],
+                                "researcher_prompt_ref": prompt_ref_map["researcher"],
+                                "search_backend": search_backend,
+                                "recency": recency,
+                            },
+                        ),
+                    )
 
-            outcome = _iteration_outcome(
-                output_dir,
-                new_before=new_before,
-                updated_before=updated_before,
-                rejected_before=rejected_before,
-                no_new_before=no_new_before,
-            )
+                usage = _extract_usage(result)
+                prompt_tokens += usage[0]
+                completion_tokens += usage[1]
+                total_cost += usage[2]
+                budget.add(usage[2])
+
+                outcome = _iteration_outcome(
+                    output_dir,
+                    new_before=new_before,
+                    updated_before=updated_before,
+                    rejected_before=rejected_before,
+                    no_new_before=no_new_before,
+                )
+                if outcome["status"] != "unknown":
+                    break
+
+                if attempt < MAX_UNKNOWN_RETRIES:
+                    print(
+                        f"[orchestrator] Retrying iteration {i + 1} after "
+                        f"missing final result tool call ({attempt + 1}/{MAX_UNKNOWN_RETRIES})."
+                    )
+                else:
+                    reason = (
+                        "No final result tool call after "
+                        f"{MAX_UNKNOWN_RETRIES + 1} attempts; marking this iteration as no_new."
+                    )
+                    append_no_new_tool(output_dir, reason)
+                    outcome = _iteration_outcome(
+                        output_dir,
+                        new_before=new_before,
+                        updated_before=updated_before,
+                        rejected_before=rejected_before,
+                        no_new_before=no_new_before,
+                    )
             attempted_count += 1
 
             if outcome["status"] in ("accepted", "rejected", "no_new"):
+                assert trace_id is not None
                 call_id, trace_url = get_agent_trace_call_metadata(trace_id)
                 url = outcome.get("url")
                 if outcome["status"] == "accepted":
@@ -818,10 +540,8 @@ async def run_briefing(
                 else:
                     no_new_count += 1
 
-            budget.add(usage[2])
-
             if outcome["stop"]:
-                print(f"[orchestrator] Stopping after iteration {i + 1}: no new tool found.")
+                print(f"[orchestrator] Stopping after iteration {i + 1}: {outcome['status']}.")
                 break
 
     except BudgetExceededError:
@@ -840,7 +560,10 @@ async def run_briefing(
         )
         if metadata_path.exists():
             update_metadata_costs(metadata_path, total_cost, prompt_tokens, completion_tokens)
-        build_feed_output(output_dir, registry=registry, day=day)
+        manifest = build_feed_output(output_dir, registry=registry, day=day)
+        from discovery_forge.tools.turso_feed import write_feed_to_turso
+
+        write_feed_to_turso(output_dir, manifest, day)
 
 
 def _extract_usage(result) -> tuple[int, int, float]:

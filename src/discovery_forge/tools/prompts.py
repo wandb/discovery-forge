@@ -10,7 +10,7 @@ from typing import Any
 import weave
 
 
-INSTRUCTIONS_DIR = Path(__file__).parent.parent / "instructions"
+INSTRUCTIONS_DIR = Path(__file__).parent.parent / "agents"
 
 PROMPT_OBJECT_NAMES = {
     "researcher": "researcher_instructions",
