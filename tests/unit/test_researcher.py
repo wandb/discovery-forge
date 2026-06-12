@@ -1,6 +1,5 @@
 """ResearcherAgent: the single discover+profile agent and its scope filter."""
 
-import json
 from pathlib import Path
 
 ROOT = Path(__file__).parent.parent.parent

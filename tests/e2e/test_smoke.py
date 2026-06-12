@@ -8,7 +8,6 @@ Marked @pytest.mark.expensive:
 """
 
 import json
-from pathlib import Path
 
 import pytest
 

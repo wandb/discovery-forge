@@ -47,6 +47,9 @@ Always use `uv` — `pip` is forbidden.
 # Install / sync dependencies
 uv sync
 
+# Lint (default E/F rules; fix code, do not loosen config)
+uv run ruff check .
+
 # Run the full unit test suite (LLM mocked, free)
 uv run pytest tests/ --ignore=tests/e2e
 
