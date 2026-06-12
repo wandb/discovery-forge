@@ -13,16 +13,9 @@ This skill **does not change the human annotation results themselves**. It only 
 
 ## Before You Start
 
-Read the official W&B Skills guidance for the surfaces involved:
+Follow `AGENTS.md` W&B Skills setup first. Use W&B Skills for Weave trace, feedback, annotation, and dataset access; this skill only defines the Discovery Forge dataset-building workflow.
 
-- Install if needed: `npx skills add wandb/skills`
-- Local weave skill references when present:
-  - `~/.claude/skills/weave/SKILL.md`
-  - `~/.claude/skills/weave/references/feedback.md`
-  - `~/.claude/skills/weave/references/datasets.md`
-- Upstream source: https://github.com/wandb/skills
-
-Do not use W&B MCP tools in this workflow. Fetch trace and feedback evidence directly through the Weave Python SDK/trace server API.
+Fetch all trace and feedback evidence live from Weave through W&B Skills. Do not use W&B MCP tools, and do not add discovery-forge query wrappers.
 
 ## Default Project
 
@@ -52,8 +45,8 @@ Each dataset row must contain:
 
 ## Workflow
 
-1. Identify the source scope: a day, a set of `research_run` call IDs, or "all reviewed items in `research_annotation`". Prefer an explicit run day or call-ID list over "every historical annotation".
-2. Initialize Weave and query the annotated root calls with `include_feedback=True`.
+1. Identify the source scope: a set of `research_run` call IDs (from the user or a Weave UI link), a run day, or "all reviewed items in `research_annotation`". Prefer an explicit call-ID list or run day over "every historical annotation". Get call IDs from Weave, not from local files.
+2. Use W&B Skills to fetch the annotated root calls and feedback **from Weave**.
 3. For each call, separate human annotations (`wandb.annotation.QualitySelector`, `wandb.annotation.QualityReviewer`) from runnable scorer feedback. Use only `research_annotation` human annotations as the verdict seed; do not seed labels from runnable scorers.
 4. Inspect one call first to learn the exact `output` shape, then extract the candidate name, primary URL, and a pre-verdict description plus the human reviewer's rationale.
 5. Map the human `QualitySelector` to a draft gold label:
@@ -65,40 +58,16 @@ Each dataset row must contain:
 8. Publish the dataset and update `VERDICT_DATASET_REF`.
 9. Validate.
 
-### Query Annotated Calls With Weave SDK
+### Evidence Selection
 
-Follow W&B Skills guidance and query Weave directly. Do not add discovery-forge helper wrappers for call queries.
+Use W&B Skills to fetch and inspect Weave evidence. This skill only defines which Discovery Forge evidence matters:
 
-```python
-import weave
-from weave.trace_server.trace_server_interface import CallsFilter, CallsQueryReq
-
-from discovery_forge.observability import weave_project_path
-
-call_ids = ["<research_run_call_id>", "..."]  # or build from a day's _profile_runs.jsonl
-
-client = weave.init(weave_project_path())
-response = client.server.calls_query(
-    CallsQueryReq(
-        project_id=client.project_id,
-        filter=CallsFilter(call_ids=call_ids),
-        include_feedback=True,
-        limit=len(call_ids),
-    )
-)
-
-for call in response.calls:
-    annotations = [
-        f for f in (call.feedback or [])
-        if str(f.get("feedback_type", "")).startswith("wandb.annotation")
-    ]
-    print(call.id, call.display_name, len(annotations))
-    print(call.output)
-    for a in annotations:
-        print(a.get("feedback_type"), a.get("payload"))
-```
-
-Read `call.feedback` from the response. Keep only annotations whose call belongs to the requested scope, and deduplicate by feedback ID.
+- Root trace unit: one `research_run_<i>` / `openai_agent_trace` call per reviewed candidate.
+- Inspect only calls in the requested source scope.
+- Keep only human annotations from `research_annotation` (`QualitySelector`, `QualityReviewer`) as verdict seeds.
+- Do not seed labels from runnable scorer feedback.
+- Deduplicate annotations by feedback ID.
+- Inspect one representative call first to learn where candidate name, primary URL, description, reviewer rationale, and annotation payload live.
 
 ## Labeling and Hygiene
 

@@ -3,7 +3,16 @@
 This file is the **build guide** Claude Code reads on every iteration.
 It is the guide for the *coder building the agents*, not the runtime guide for the research agent.
 
-For annotation-driven work, use `skills/annotation-improvement/SKILL.md`. For offline evaluation failure analysis, use `skills/offline-eval-improvement/SKILL.md`. Both are coding-agent workflows for using W&B Weave evidence, official W&B Skills guidance, and direct Weave Python SDK/API queries to plan, apply, publish, and validate prompt improvements.
+For annotation-driven work, use `skills/annotation-improvement/SKILL.md`. For offline evaluation failure analysis, use `skills/offline-eval-improvement/SKILL.md`. Both are coding-agent workflows for using W&B Weave evidence through W&B Skills to plan, apply, publish, and validate prompt improvements.
+
+---
+
+## W&B Skills Setup
+
+Before any coding-agent workflow that touches W&B or Weave traces, feedback, annotations, prompts, datasets, evaluations, or reports, ensure the official W&B Skills are available.
+
+- Install if needed: `npx skills add wandb/skills`
+- Read and use the W&B Skills as the source of truth for Weave data access, feedback, datasets, prompts, and evaluations.
 
 ---
 
@@ -12,7 +21,7 @@ For annotation-driven work, use `skills/annotation-improvement/SKILL.md`. For of
 - `AGENTS.md` — the canonical build guide and source of truth for coding agents.
 - `README.md` — agent architecture diagram, daily accumulation model, CLI usage.
 - `PRD.md` — User Stories with checkboxes, scope definition, and validation criteria.
-- `skills/annotation-improvement/SKILL.md` — workflow for using Weave SDK/API trace and annotation evidence to plan, apply, validate, and publish prompt improvements.
+- `skills/annotation-improvement/SKILL.md` — workflow for using Weave trace and annotation evidence through W&B Skills to plan, apply, validate, and publish prompt improvements.
 - `skills/offline-eval-improvement/SKILL.md` — workflow for using Weave Evaluation failed rows and `verdict_quality_scorer` evidence to improve and compare prompt versions.
 - `skills/build-verdict-dataset/SKILL.md` — workflow for building `verdict_quality_dataset` from `research_annotation` evidence, refining rows against the rubric, and publishing a new versioned Weave Dataset.
 
@@ -242,7 +251,7 @@ Feedback-driven improvement is **prompt-only** by default. The skill-guided work
 The workflow is skill-guided:
 
 - Read and follow `skills/annotation-improvement/SKILL.md`.
-- Use live Weave evidence through W&B Skills guidance and direct Weave Python SDK/API queries (`CallsQueryReq`, `CallsFilter`), plus `_profile_runs.jsonl`, human annotations, runnable scorer feedback, and the current `researcher.md`.
+- Use live Weave evidence through W&B Skills, plus human annotations, runnable scorer feedback, and the current `researcher.md`.
 - Write `src/discovery_forge/agents/improve_history/<day>/plan.md`, edit only `src/discovery_forge/agents/researcher.md`, publish the updated Weave `StringPrompt`, write `src/discovery_forge/agents/improve_history/<day>/applied.md`, and run focused validation.
 - For offline evaluation failures, follow `skills/offline-eval-improvement/SKILL.md`; inspect the evaluation parent/child calls, keep datasets and scorers read-only, then rerun the same pinned dataset for comparison.
 

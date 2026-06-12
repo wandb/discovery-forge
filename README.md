@@ -142,6 +142,7 @@ git clone <repo>
 cd discovery-forge
 git checkout main   # the hands-on starting point; no separate setup branch
 uv sync
+npx skills add wandb/skills # install wandb official skills
 cp .env.example .env
 # Fill OPENAI_API_KEY, WANDB_API_KEY, WANDB_ENTITY, WANDB_PROJECT
 # and SERPER_API_KEY for the default backend.

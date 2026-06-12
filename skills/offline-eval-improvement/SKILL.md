@@ -11,17 +11,9 @@ The coding agent inspects an evaluation run, analyzes failed rows, writes a plan
 
 ## Before You Start
 
-Read the official W&B Skills guidance for the surfaces involved:
+Follow `AGENTS.md` W&B Skills setup first. Use W&B Skills for Weave evaluation, dataset, trace, and scorer evidence; this skill only defines the Discovery Forge offline-eval improvement workflow.
 
-- Install if needed: `npx skills add wandb/skills`
-- Local weave skill references when present:
-  - `~/.claude/skills/weave/SKILL.md`
-  - `~/.claude/skills/weave/references/evaluation.md`
-  - `~/.claude/skills/weave/references/datasets.md`
-  - `~/.claude/skills/weave/references/prompts.md`
-- Upstream source: https://github.com/wandb/skills
-
-Do not use W&B MCP tools in this workflow. Fetch evaluation evidence directly through the Weave Python SDK/trace server API.
+Fetch all evaluation evidence live from Weave through W&B Skills. Do not use W&B MCP tools, and do not add discovery-forge query wrappers.
 
 ## Default Project
 
@@ -35,27 +27,17 @@ Do not use W&B MCP tools in this workflow. Fetch evaluation evidence directly th
 - Improvement history: `src/discovery_forge/agents/improve_history/<YYYY-MM-DD-HHMM-offline-eval>/plan.md` and `src/discovery_forge/agents/improve_history/<YYYY-MM-DD-HHMM-offline-eval>/applied.md`
 - Primary metric: `verdict_quality_scorer.is_correct.true_fraction`
 
-## Change Budget
+## Prompt Edit Scope
 
-Control how **aggressively** the prompt may change in one iteration.
-
-If the user does not specify otherwise, treat the change budget as **`medium`** — a moderate, focused edit covering one or two related clusters, paired with accept-protection. On a small, partly search-dependent eval, a single tiny edit's effect (~2-3 rows) can sit inside the run-to-run noise band (~±2-3 rows), so `low` steps need multiple-run averaging to read; `high` moves fastest but is harder to trace. `medium` is the default balance. Use `low` for smaller, more traceable steps or `high` for a one-pass rewrite when the user asks.
-
-| Change budget | Edit posture | Scope this iteration |
-| --- | --- | --- |
-| `low` | Conservative. Prefer a few bullets or a short clarification inside an existing section. | One failure cluster only. |
-| `medium` (default) | Moderate. One focused subsection or a small combination of related edits. | Up to two related clusters. |
-| `high` | Broad. A full policy block (for example a complete verdict gate) is allowed in one pass. | Multiple clusters together. |
-
-When making a broad edit, pair every new reject rule with an explicit accept-protection clause (for example "missing metadata is a profile limitation, not a scope failure") so that tightening one cluster does not push correctly-accepted rows into false rejects.
+Each improvement iteration should make a focused, policy-level prompt edit that covers one or two related failure clusters. Pair every new reject rule with an explicit accept-protection clause (for example "missing metadata is a profile limitation, not a scope failure") so that tightening one cluster does not push correctly-accepted rows into false rejects.
 
 ### Rules
 
-- At the default `medium` budget, cover one or two related failure clusters in a focused edit; keep every change **policy-level** (artifact types, loop evidence, output discipline), not candidate-specific cheats.
+- Cover one or two related failure clusters in a focused edit; keep every change **policy-level** (artifact types, loop evidence, output discipline), not candidate-specific cheats.
 - Pair reject rules with accept-protection so tightening one cluster does not create false rejects elsewhere.
 - After each iteration, rerun `evaluate.py`. Because a single run varies by ~±2-3 rows, rerun 2-3 times (or compare per-row stability) before trusting a change. If the metric regresses across runs, revert to the backup and retry.
 - Do not hardcode dataset row IDs or candidate names as a lookup table in the prompt.
-- At `low`/`medium`, record in `plan.md` what you are **not** changing this iteration so the next pass has a clear queue.
+- Record in `plan.md` what you are **not** changing this iteration so the next pass has a clear queue.
 
 ### Prompt-edit guardrails
 
@@ -67,25 +49,11 @@ These keep edits general (no cherry-picking specific candidates) while avoiding 
 - Every iteration, check **both** error directions on the rerun: count new false rejects (accepted→rejected) as well as fixed false accepts. A change that fixes one cluster but flips several correct accepts is a net regression even if it "sounds stricter".
 - Before keeping an edit, ask: would this sentence change the verdict on candidates I did not intend to touch? If yes, it is too broad — narrow it to the targeted artifact type or behavior.
 
-### Failure clusters to cover
-
-A broad (`high`) edit should address these together; smaller budgets take them one at a time:
+### Common Failure Clusters
 
 1. Wrong artifact type (survey, cookbook, guide, list-like sources)
 2. Adjacent infrastructure (memory-only, testing gate, repo-automation host, generic framework)
 3. Weak-evidence or over-strict edge cases (protect correctly-accepted loop runners)
-
-### Plan `Change Budget` section
-
-Add this block to every `plan.md`:
-
-```markdown
-## Change Budget
-- Change budget: medium (default) | low | high
-- Edit posture: <e.g. broad — full Candidate Verdict Mode with reject rules + accept protection>
-- Target cluster this iteration: <one pattern + example candidates>
-- Deferred to next iteration: <remaining failure patterns>
-```
 
 ## Evidence Workflow
 
@@ -96,8 +64,8 @@ Add this block to every `plan.md`:
    uv run python evaluate.py
    ```
 
-3. Query the parent evaluation call with `CallsFilter(call_ids=[eval_call_id])`.
-4. Query child row calls with `CallsFilter(parent_ids=[eval_call_id])`.
+3. Use W&B Skills to inspect the parent evaluation call.
+4. Use W&B Skills to inspect the child row calls.
 5. Pull only the fields needed for diagnosis: row inputs, `expected_scope_status`, output `scope_status`, `verdict_reason`, `final_output`, scorer outputs, call status, and prompt ref/hash metadata when present.
 6. Filter to rows where `verdict_quality_scorer.is_correct` is false. Keep a small sample of passing rows only when needed to avoid changing behavior that already works.
 7. Group failures into prompt-policy patterns:
@@ -108,43 +76,18 @@ Add this block to every `plan.md`:
 9. Write `src/discovery_forge/agents/improve_history/<YYYY-MM-DD-HHMM-offline-eval>/plan.md` before editing. Use the local execution start time for the directory name, for example `2026-06-12-1505-offline-eval`. If the file already exists for that improvement loop, update it instead of creating a new call-ID directory.
 10. Before editing, preserve the current prompt as `src/discovery_forge/agents/researcher_backup_<N>.md`, where `<N>` is the next available integer starting from `0`.
 
-### Query Evaluation Rows With Weave SDK
+### Evaluation Evidence Selection
 
-Follow W&B Skills guidance and query Weave directly. Do not add discovery-forge helper wrappers for call queries.
+Use W&B Skills to fetch and inspect Weave Evaluation evidence. This skill only defines which Discovery Forge evidence matters:
 
-```python
-import weave
-from weave.trace_server.trace_server_interface import CallsFilter, CallsQueryReq
+- Parent evaluation call: the exact eval call ID or link under analysis.
+- Child row calls: the dataset-row-level evaluation results under that parent.
+- Dataset row inputs: candidate name, candidate URL, description, and `expected_scope_status`.
+- Model output: `scope_status`, `verdict_reason`, and `final_output`.
+- Scorer output: `verdict_quality_scorer.is_correct` and any supporting scorer detail.
+- Prompt metadata: prompt ref/hash when present.
 
-from discovery_forge.observability import weave_project_path
-
-eval_call_id = "<eval-call-id>"
-
-client = weave.init(weave_project_path())
-
-parent = client.server.calls_query(
-    CallsQueryReq(
-        project_id=client.project_id,
-        filter=CallsFilter(call_ids=[eval_call_id]),
-        limit=1,
-    )
-)
-
-children = client.server.calls_query(
-    CallsQueryReq(
-        project_id=client.project_id,
-        filter=CallsFilter(parent_ids=[eval_call_id]),
-        limit=100,
-    )
-)
-
-for call in children.calls:
-    output = call.output or {}
-    scores = output.get("scores") or output.get("scorer_outputs") or {}
-    print(call.id, call.display_name, scores)
-```
-
-The exact shape of `call.output` can vary by Weave version. Inspect one child row first, then extract the smallest stable set of fields needed to identify failed verdict rows.
+Inspect one child row first to learn the shape, then extract the smallest stable set of fields needed to identify failed verdict rows.
 
 ## Plan Format
 
@@ -160,11 +103,10 @@ Use this structure:
 - Failed rows inspected: <n>
 - Current `researcher.md` inspected
 
-## Change Budget
-- Change budget: medium
-- Edit posture: <how broad the prompt edit will be>
-- Clusters covered this iteration: <patterns>
-- Deferred to next iteration: <remaining patterns, if any>
+## Prompt Edit Scope
+- Target clusters this iteration: <one or two related failure patterns>
+- Accept-protection: <passing behavior that must stay stable>
+- Deferred patterns: <remaining failure patterns, if any>
 
 ## Failure Summary
 - <concrete failure pattern with candidate examples>
@@ -204,7 +146,7 @@ During development, evaluate the local `researcher.md` file directly. Do not pas
 
 For each iteration:
 
-1. Unless the user asks otherwise, use the default change budget `medium`: a focused edit covering one or two related clusters with paired accept-protection.
+1. Make a focused edit covering one or two related clusters with paired accept-protection.
 2. Create the next backup file.
 3. Apply the policy-level edit for the targeted clusters.
 4. Run focused validation.
@@ -230,7 +172,6 @@ uv run python evaluate.py
 
 Report:
 
-- change budget used and edit posture
 - targeted failure cluster and deferred patterns
 - evaluation run inspected
 - dataset ref used

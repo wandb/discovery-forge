@@ -1,26 +1,19 @@
 ---
 name: annotation-improvement
-description: Guides coding agents through prompt improvement for discovery-forge using W&B Weave research_run traces, human annotations, runnable feedback, and direct Weave Python SDK/API queries. Use when the user asks to improve researcher.md from annotation queues, reviewed research traces, or human feedback.
+description: Guides coding agents through prompt improvement for discovery-forge using W&B Weave research_run traces, human annotations, runnable feedback, and W&B Skills. Use when the user asks to improve researcher.md from annotation queues, reviewed research traces, or human feedback.
 ---
 
 # Annotation Improvement
 
-Use this skill when improving `src/discovery_forge/agents/researcher.md` from live Weave annotation evidence with official W&B Skills guidance and direct Weave Python SDK/API queries.
+Use this skill when improving `src/discovery_forge/agents/researcher.md` from live Weave annotation evidence with W&B Skills.
 
 The coding agent fetches evidence, writes a plan, edits the prompt, publishes the prompt, and validates the change.
 
 ## Before You Start
 
-Read the official W&B Skills guidance for the surfaces involved:
+Follow `AGENTS.md` W&B Skills setup first. Use W&B Skills for Weave trace, feedback, annotation, prompt, and evaluation access; this skill only defines the Discovery Forge prompt-improvement workflow.
 
-- Install if needed: `npx skills add wandb/skills`
-- Local weave skill references when present:
-  - `~/.claude/skills/weave/SKILL.md`
-  - `~/.claude/skills/weave/references/feedback.md`
-  - `~/.claude/skills/weave/references/prompts.md`
-- Upstream source: https://github.com/wandb/skills
-
-Do not use W&B MCP tools in this workflow. Fetch trace and feedback evidence directly through the Weave Python SDK/trace server API.
+Fetch all trace and feedback evidence live from Weave through W&B Skills. Do not use W&B MCP tools, and do not add discovery-forge query wrappers.
 
 ## Default Project
 
@@ -28,67 +21,37 @@ Do not use W&B MCP tools in this workflow. Fetch trace and feedback evidence dir
 - Project: read from `.env` as `WANDB_PROJECT` (required; `.env.example` uses `discovery-forge`)
 - API key: read from `.env` as `WANDB_API_KEY` (required)
 - Prompt file: `src/discovery_forge/agents/researcher.md`
-- Daily trace records: `daily_runs/<day>/_profile_runs.jsonl`
+- Evidence source: Weave traces and feedback fetched live via W&B Skills
 - Improvement history: `src/discovery_forge/agents/improve_history/<day>/plan.md` and `src/discovery_forge/agents/improve_history/<day>/applied.md`
 - Root trace unit: one `research_run_<i>` / `openai_agent_trace` call per discovered tool
 
 ## Evidence Workflow
 
-1. Identify the target day, run, evaluation, or explicit Weave call IDs.
-2. If using a daily run, read `daily_runs/<day>/_profile_runs.jsonl` to get root `weave_call_id` values. If the user provides explicit Weave call IDs or an evaluation call ID, use that target directly.
-3. Initialize Weave and query root calls directly through the Python SDK/trace server API.
-4. Pull these fields for each root call: `id`, `display_name`, `trace_id`, `output`, `attributes`, `summary`.
-5. Pull feedback for the same call IDs with `include_feedback=true` on the call query.
-6. Separate feedback into:
+1. Identify the target from what the user gives you: explicit Weave call IDs, a Weave Evaluation link / eval call ID, a run day, or a run ID.
+2. Use W&B Skills to fetch the target root calls and feedback **from Weave**. If you only have a day or run ID, use W&B Skills to identify the matching root calls for that scope.
+3. Include feedback evidence for the same root calls.
+4. Read these fields per root call: `id`, `display_name`, `output`, `attributes`, `summary`, `feedback`.
+5. Separate feedback into:
    - human annotations: `wandb.annotation.QualitySelector`, `wandb.annotation.QualityReviewer`
    - runnable scorer feedback: `Researcher-quality-check`, `Researcher-category-check`, `Quality-classifiers`
-7. Prefer human annotations for final quality judgment, but use runnable scorer feedback for concrete evidence failures such as missing sources, unsupported claims, placeholder URLs, wrong category, or hallucination risk.
-8. Read the current `researcher.md`.
-9. Write `src/discovery_forge/agents/improve_history/<day>/plan.md` before editing. If the file already exists for that day, overwrite it with the latest plan.
+6. Prefer human annotations for final quality judgment, but use runnable scorer feedback for concrete evidence failures such as missing sources, unsupported claims, placeholder URLs, wrong category, or hallucination risk.
+7. Read the current `researcher.md`.
+8. Write `src/discovery_forge/agents/improve_history/<day>/plan.md` before editing. If the file already exists for that day, overwrite it with the latest plan.
 
-### Query Root Calls With Weave SDK
+### Evidence Selection
 
-Follow W&B Skills guidance and query Weave directly. Do not add discovery-forge helper wrappers for call queries.
+Use W&B Skills to fetch and inspect Weave evidence. This skill only defines which Discovery Forge evidence matters:
 
-```python
-import json
-from pathlib import Path
-
-import weave
-from weave.trace_server.trace_server_interface import CallsFilter, CallsQueryReq
-
-from discovery_forge.observability import weave_project_path
-
-day = "<day>"
-day_dir = Path("daily_runs") / day
-call_ids = [
-    json.loads(line)["weave_call_id"]
-    for line in (day_dir / "_profile_runs.jsonl").read_text().splitlines()
-    if line.strip() and json.loads(line).get("weave_call_id")
-]
-
-client = weave.init(weave_project_path())
-response = client.server.calls_query(
-    CallsQueryReq(
-        project_id=client.project_id,
-        filter=CallsFilter(call_ids=call_ids),
-        include_feedback=True,
-        limit=len(call_ids),
-    )
-)
-
-for call in response.calls:
-    print(call.id, call.display_name, len(call.feedback or []))
-    print(call.output, call.attributes, call.summary)
-```
-
-Use `CallsQueryReq` with `CallsFilter(call_ids=...)` for root traces.
-Use `CallsFilter(parent_ids=[eval_call_id])` for evaluation child rows.
-Read `call.feedback` from the query response; separate human annotations from runnable scorer rows in your plan.
+- Root trace unit: one root call per discovered tool, display name `research_run_<i>` (or `openai_agent_trace`).
+- For explicit Weave call IDs, inspect exactly those calls.
+- For a day/run target, inspect the matching `research_run_*` root calls for that scope.
+- For an evaluation target, inspect the parent evaluation call and its child rows.
+- Read only the evidence needed for analysis: call identity, display name, output, attributes, summary, and feedback.
+- Separate human annotations from runnable scorer feedback in the plan.
 
 ### Date Scope
 
-- Prefer run day (`output.metadata.day`, `attributes.day`, or `_profile_runs.jsonl.day`) over annotation creation date.
+- Prefer run day from the Weave call output or attributes over annotation creation date.
 - Include feedback only when the annotated call belongs to the requested day, run ID, or stage.
 - Deduplicate feedback by feedback ID.
 - Do not treat all historical annotations from a shared queue as current evidence.
@@ -98,9 +61,9 @@ Read `call.feedback` from the query response; separate human annotations from ru
 If the user provides a Weave Evaluation link or eval call ID:
 
 1. Inspect that exact evaluation before rerunning anything.
-2. Query the parent evaluation call first with `CallsFilter(call_ids=[eval_call_id])`.
-3. Query child rows with `CallsFilter(parent_ids=[eval_call_id])`.
-4. Pull only needed columns first: inputs, output, scorer outputs, display name, status.
+2. Use W&B Skills to inspect the parent evaluation call first.
+3. Use W&B Skills to inspect the evaluation child rows.
+4. Read only the fields you need first: inputs, output, scorer outputs, display name, status.
 5. Limit initial child rows to failed scorer rows or a small sample, then broaden only if needed.
 
 Evaluation datasets, audit sidecars, and scorers are read-only evidence. Do not change dataset rows, labels, dedup logic, scorer logic, or evaluation runner behavior to improve scores.
@@ -113,7 +76,7 @@ Use this structure:
 # Skill-Based Prompt Improvement Plan for <day>
 
 ## Source
-- Weave traces and feedback queried directly through the Weave Python SDK/API
+- Weave traces and feedback fetched via W&B Skills
 - Human annotations inspected
 - Runnable scorer feedback inspected
 - Current `researcher.md` inspected
