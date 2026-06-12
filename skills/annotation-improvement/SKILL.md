@@ -54,6 +54,9 @@ Follow W&B Skills guidance and query Weave directly. Do not add discovery-forge 
 import json
 from pathlib import Path
 
+from dotenv import load_dotenv
+load_dotenv(Path(".env"))
+
 import weave
 from weave.trace_server.trace_server_interface import CallsFilter, CallsQueryReq
 
@@ -78,13 +81,16 @@ response = client.server.calls_query(
 )
 
 for call in response.calls:
-    print(call.id, call.display_name, len(call.feedback or []))
-    print(call.output, call.attributes, call.summary)
+    feedback = (call.summary or {}).get("weave", {}).get("feedback", [])
+    print(call.id, call.display_name, len(feedback))
+    print(call.output, call.attributes)
 ```
+
+**Important**: When running snippets inline (e.g. `uv run python -c "..."`), always use `load_dotenv(Path(".env"))` with an explicit path. The default `load_dotenv()` calls `find_dotenv()` which walks the call stack and fails with `AssertionError` when executed from stdin or `-c`.
 
 Use `CallsQueryReq` with `CallsFilter(call_ids=...)` for root traces.
 Use `CallsFilter(parent_ids=[eval_call_id])` for evaluation child rows.
-Read `call.feedback` from the query response; separate human annotations from runnable scorer rows in your plan.
+Read feedback from `call.summary["weave"]["feedback"]` (not `call.feedback`, which does not exist on `CallSchema`). Separate human annotations from runnable scorer rows in your plan.
 
 ### Date Scope
 

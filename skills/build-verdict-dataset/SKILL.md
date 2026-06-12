@@ -70,6 +70,11 @@ Each dataset row must contain:
 Follow W&B Skills guidance and query Weave directly. Do not add discovery-forge helper wrappers for call queries.
 
 ```python
+from pathlib import Path
+
+from dotenv import load_dotenv
+load_dotenv(Path(".env"))
+
 import weave
 from weave.trace_server.trace_server_interface import CallsFilter, CallsQueryReq
 
@@ -88,8 +93,9 @@ response = client.server.calls_query(
 )
 
 for call in response.calls:
+    feedback = (call.summary or {}).get("weave", {}).get("feedback", [])
     annotations = [
-        f for f in (call.feedback or [])
+        f for f in feedback
         if str(f.get("feedback_type", "")).startswith("wandb.annotation")
     ]
     print(call.id, call.display_name, len(annotations))
@@ -98,7 +104,7 @@ for call in response.calls:
         print(a.get("feedback_type"), a.get("payload"))
 ```
 
-Read `call.feedback` from the response. Keep only annotations whose call belongs to the requested scope, and deduplicate by feedback ID.
+Read feedback from `call.summary["weave"]["feedback"]` (not `call.feedback`, which does not exist on `CallSchema`). Keep only annotations whose call belongs to the requested scope, and deduplicate by feedback ID.
 
 ## Labeling and Hygiene
 
