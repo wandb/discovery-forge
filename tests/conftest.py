@@ -1,6 +1,5 @@
 """Shared pytest fixtures and configuration."""
 
-import os
 
 import pytest
 from unittest.mock import MagicMock, patch

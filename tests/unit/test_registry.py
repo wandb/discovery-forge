@@ -2,9 +2,7 @@
 
 import json
 from datetime import datetime, timezone
-from pathlib import Path
 
-import pytest
 
 
 # ── RegistryEntry schema ──────────────────────────────────────────────────────
@@ -31,13 +29,12 @@ def test_registry_entry_schema_fields():
 def test_registry_load_creates_dirs(tmp_path):
     from discovery_forge.tools.registry import ToolRegistry
 
-    reg = ToolRegistry.load(tmp_path / "_registry")
+    ToolRegistry.load(tmp_path / "_registry")
     assert (tmp_path / "_registry").exists()
     assert (tmp_path / "_registry" / "profiles").exists()
 
 
 def test_registry_contains_url_normalization(tmp_path):
-    from discovery_forge.schemas.tool_profile import ToolProfile
     from discovery_forge.tools.registry import ToolRegistry
 
     reg = ToolRegistry.load(tmp_path / "_registry")

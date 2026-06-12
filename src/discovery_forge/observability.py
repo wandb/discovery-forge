@@ -67,7 +67,6 @@ class DiscoveryForgeWeaveTracingProcessor(WeaveTracingProcessor):
         if tid not in self._trace_data or tid not in self._trace_calls:
             return
 
-        trace_data = self._trace_data[tid]
         self._ended_traces.add(tid)
         call = self._trace_calls[tid]
 

@@ -1,10 +1,8 @@
 """Search backend tests."""
 
-import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 ROOT = Path(__file__).parent.parent.parent
 

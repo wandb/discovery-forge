@@ -1,6 +1,5 @@
 """US1: Project bootstrap validation tests."""
 
-import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).parent.parent.parent

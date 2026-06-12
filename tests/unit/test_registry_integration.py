@@ -1,6 +1,5 @@
 """Integration of the global registry with the single ResearcherAgent."""
 
-from pathlib import Path
 
 
 def test_researcher_agent_accepts_registry_param(tmp_path):
