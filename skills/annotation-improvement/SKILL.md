@@ -1,19 +1,19 @@
 ---
 name: annotation-improvement
-description: Guides coding agents through prompt improvement for discovery-forge using W&B Weave research_run traces, human annotations, runnable feedback, and W&B Skills. Use when the user asks to improve researcher.md from annotation queues, reviewed research traces, or human feedback.
+description: Guides coding agents through Discovery Forge prompt improvement after selecting the `wandb-primary` skill. Use `wandb-primary` to fetch W&B Weave research_run traces, human annotations, runnable feedback, and evaluations, then use this workflow when improving researcher.md from annotation queues, reviewed research traces, or human feedback.
 ---
 
 # Annotation Improvement
 
-Use this skill when improving `src/discovery_forge/agents/researcher.md` from live Weave annotation evidence with W&B Skills.
+Use this skill when improving `src/discovery_forge/agents/researcher.md` from live Weave annotation evidence fetched with the `wandb-primary` skill.
 
 The coding agent fetches evidence, writes a plan, edits the prompt, publishes the prompt, and validates the change.
 
 ## Before You Start
 
-Follow `AGENTS.md` W&B Skills setup first. Use W&B Skills for Weave trace, feedback, annotation, prompt, and evaluation access; this skill only defines the Discovery Forge prompt-improvement workflow.
+Follow `AGENTS.md` setup first, then select and use the installed `wandb-primary` skill for Weave trace, feedback, annotation, prompt, and evaluation access. This skill only defines the Discovery Forge prompt-improvement workflow.
 
-Fetch all trace and feedback evidence live from Weave through W&B Skills. Do not use W&B MCP tools, and do not add discovery-forge query wrappers.
+Fetch all trace and feedback evidence live from Weave through `wandb-primary` skill guidance, including its Weave SDK / W&B API patterns. Do not use W&B MCP tools, and do not add discovery-forge query wrappers.
 
 ## Default Project
 
@@ -21,14 +21,14 @@ Fetch all trace and feedback evidence live from Weave through W&B Skills. Do not
 - Project: read from `.env` as `WANDB_PROJECT` (required; `.env.example` uses `discovery-forge`)
 - API key: read from `.env` as `WANDB_API_KEY` (required)
 - Prompt file: `src/discovery_forge/agents/researcher.md`
-- Evidence source: Weave traces and feedback fetched live via W&B Skills
+- Evidence source: Weave traces and feedback fetched live via the `wandb-primary` skill
 - Improvement history: `src/discovery_forge/agents/improve_history/<day>/plan.md` and `src/discovery_forge/agents/improve_history/<day>/applied.md`
 - Root trace unit: one `research_run_<i>` / `openai_agent_trace` call per discovered tool
 
 ## Evidence Workflow
 
 1. Identify the target from what the user gives you: explicit Weave call IDs, a Weave Evaluation link / eval call ID, a run day, or a run ID.
-2. Use W&B Skills to fetch the target root calls and feedback **from Weave**. If you only have a day or run ID, use W&B Skills to identify the matching root calls for that scope.
+2. Use the `wandb-primary` skill to fetch the target root calls and feedback **from Weave**. If you only have a day or run ID, use `wandb-primary` Weave SDK guidance to identify the matching root calls for that scope.
 3. Include feedback evidence for the same root calls.
 4. Read these fields per root call: `id`, `display_name`, `output`, `attributes`, `summary`, `feedback`.
 5. Separate feedback into:
@@ -40,7 +40,7 @@ Fetch all trace and feedback evidence live from Weave through W&B Skills. Do not
 
 ### Evidence Selection
 
-Use W&B Skills to fetch and inspect Weave evidence. This skill only defines which Discovery Forge evidence matters:
+Use the `wandb-primary` skill to fetch and inspect Weave evidence. This skill only defines which Discovery Forge evidence matters:
 
 - Root trace unit: one root call per discovered tool, display name `research_run_<i>` (or `openai_agent_trace`).
 - For explicit Weave call IDs, inspect exactly those calls.
@@ -61,8 +61,8 @@ Use W&B Skills to fetch and inspect Weave evidence. This skill only defines whic
 If the user provides a Weave Evaluation link or eval call ID:
 
 1. Inspect that exact evaluation before rerunning anything.
-2. Use W&B Skills to inspect the parent evaluation call first.
-3. Use W&B Skills to inspect the evaluation child rows.
+2. Use the `wandb-primary` skill to inspect the parent evaluation call first.
+3. Use the `wandb-primary` skill to inspect the evaluation child rows.
 4. Read only the fields you need first: inputs, output, scorer outputs, display name, status.
 5. Limit initial child rows to failed scorer rows or a small sample, then broaden only if needed.
 
@@ -76,7 +76,7 @@ Use this structure:
 # Skill-Based Prompt Improvement Plan for <day>
 
 ## Source
-- Weave traces and feedback fetched via W&B Skills
+- Weave traces and feedback fetched via the `wandb-primary` skill
 - Human annotations inspected
 - Runnable scorer feedback inspected
 - Current `researcher.md` inspected

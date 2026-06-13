@@ -1,19 +1,19 @@
 ---
 name: offline-eval-improvement
-description: Guides coding agents through prompt improvement for discovery-forge using W&B Weave offline evaluation results, failed eval rows, and verdict_quality_scorer evidence. Use when the user asks to improve researcher.md from Verdict Quality Eval results, compare offline eval runs, or raise verdict_quality_dataset performance.
+description: Guides coding agents through Discovery Forge prompt improvement after selecting the `wandb-primary` skill. Use `wandb-primary` to fetch W&B Weave offline evaluation results, failed eval rows, and verdict_quality_scorer evidence, then use this workflow when improving researcher.md from Verdict Quality Eval results, comparing offline eval runs, or raising verdict_quality_dataset performance.
 ---
 
 # Offline Eval Improvement
 
-Use this skill when improving `src/discovery_forge/agents/researcher.md` from Weave Evaluation evidence rather than daily annotation queues.
+Use this skill when improving `src/discovery_forge/agents/researcher.md` from Weave Evaluation evidence fetched with the `wandb-primary` skill rather than daily annotation queues.
 
 The coding agent inspects an evaluation run, analyzes failed rows, writes a plan, backs up the current prompt, edits the local prompt, validates the change, reruns the same pinned dataset, and reports the before/after result.
 
 ## Before You Start
 
-Follow `AGENTS.md` W&B Skills setup first. Use W&B Skills for Weave evaluation, dataset, trace, and scorer evidence; this skill only defines the Discovery Forge offline-eval improvement workflow.
+Follow `AGENTS.md` setup first, then select and use the installed `wandb-primary` skill for Weave evaluation, dataset, trace, and scorer evidence. This skill only defines the Discovery Forge offline-eval improvement workflow.
 
-Fetch all evaluation evidence live from Weave through W&B Skills. Do not use W&B MCP tools, and do not add discovery-forge query wrappers.
+Fetch all evaluation evidence live from Weave through `wandb-primary` skill guidance, including its Weave SDK / W&B API patterns. Do not use W&B MCP tools, and do not add discovery-forge query wrappers.
 
 ## Default Project
 
@@ -64,8 +64,8 @@ These keep edits general (no cherry-picking specific candidates) while avoiding 
    uv run python evaluate.py
    ```
 
-3. Use W&B Skills to inspect the parent evaluation call.
-4. Use W&B Skills to inspect the child row calls.
+3. Use the `wandb-primary` skill to inspect the parent evaluation call.
+4. Use the `wandb-primary` skill to inspect the child row calls.
 5. Pull only the fields needed for diagnosis: row inputs, `expected_scope_status`, output `scope_status`, `verdict_reason`, `final_output`, scorer outputs, call status, and prompt ref/hash metadata when present.
 6. Filter to rows where `verdict_quality_scorer.is_correct` is false. Keep a small sample of passing rows only when needed to avoid changing behavior that already works.
 7. Group failures into prompt-policy patterns:
@@ -78,7 +78,7 @@ These keep edits general (no cherry-picking specific candidates) while avoiding 
 
 ### Evaluation Evidence Selection
 
-Use W&B Skills to fetch and inspect Weave Evaluation evidence. This skill only defines which Discovery Forge evidence matters:
+Use the `wandb-primary` skill to fetch and inspect Weave Evaluation evidence. This skill only defines which Discovery Forge evidence matters:
 
 - Parent evaluation call: the exact eval call ID or link under analysis.
 - Child row calls: the dataset-row-level evaluation results under that parent.
