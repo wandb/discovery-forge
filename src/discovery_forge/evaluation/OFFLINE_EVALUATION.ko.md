@@ -14,7 +14,7 @@
 
 - `verdict_quality_dataset`
 
-`evaluate.py`는 `evaluation/datasets.py`에 고정된 published ref를 기본값으로 읽으므로, 인자 없이도 published 버전 기준으로 평가가 돈다. 새 버전을 만들려면 reviewed rows를 `publish_eval_dataset(...)`으로 다시 publish하고 `datasets.py`의 ref를 갱신한다.
+`evaluate.py`는 `evaluation/evaluation_config.yaml`에 고정된 published ref를 기본값으로 읽으므로, 인자 없이도 published 버전 기준으로 평가가 돈다. 새 버전을 만들려면 reviewed rows를 `publish_eval_dataset(...)`으로 다시 publish하고 `evaluation_config.yaml`의 해당 ref를 갱신한다.
 
 ## Verdict Quality Eval
 
@@ -54,9 +54,10 @@ Scorer 해석:
 
 ```bash
 uv run python evaluate.py --limit 5
+uv run python evaluate.py --verdict-dataset-key verdict_quality
 ```
 
-새 버전 publish는 `publish_eval_dataset(rows_path, name="verdict_quality_dataset")`로 수행하고 `datasets.py`의 `VERDICT_DATASET_REF`를 갱신한다.
+새 버전 publish는 `publish_eval_dataset(rows_path, name="verdict_quality_dataset")`로 수행하고 `evaluation_config.yaml`의 `datasets.verdict_quality.ref` 값을 갱신한다.
 
 ## Recommended Workflow
 
