@@ -13,6 +13,7 @@ import weave
 EVALUATION_CONFIG_PATH = Path(__file__).with_name("evaluation_config.yaml")
 DATASET_CONFIG_PATH = EVALUATION_CONFIG_PATH
 VERDICT_DATASET_KEY = "verdict_quality"
+DISCOVERY_DATASET_KEY = "discovery_quality"
 
 
 def load_dataset_config(config_path: Path = DATASET_CONFIG_PATH) -> dict[str, Any]:
@@ -69,6 +70,8 @@ def get_eval_dataset_name(
 
 VERDICT_DATASET_NAME = get_eval_dataset_name()
 VERDICT_DATASET_REF = get_eval_dataset_ref()
+DISCOVERY_DATASET_NAME = get_eval_dataset_name(DISCOVERY_DATASET_KEY)
+DISCOVERY_DATASET_REF = get_eval_dataset_ref(DISCOVERY_DATASET_KEY)
 
 
 def load_jsonl_rows(dataset_path: Path) -> list[dict[str, Any]]:

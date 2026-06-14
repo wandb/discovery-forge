@@ -1,10 +1,7 @@
-"""Run offline verdict quality evaluation against a published Weave dataset.
+"""Run offline evaluations against published Weave datasets.
 
-The verdict dataset is published to Weave as ``verdict_quality_dataset``. By
-default this loads the pinned published ref from
-``evaluation/evaluation_config.yaml``;
-pass ``--verdict-dataset-key`` to choose a configured dataset or
-``--verdict-dataset-ref`` to override with a full ref.
+The verdict dataset is run by default. Discovery quality evaluation can be added
+by passing ``--discovery-dataset-key`` or ``--discovery-dataset-ref``.
 """
 
 from __future__ import annotations
@@ -15,9 +12,11 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from discovery_forge.evaluation.datasets import (
+    DISCOVERY_DATASET_KEY,
     VERDICT_DATASET_KEY,
     get_eval_dataset_ref,
 )
+from discovery_forge.evaluation.discovery import run_discovery_evaluation
 from discovery_forge.evaluation.verdict import run_researcher_evaluation
 from discovery_forge.observability import init_observability
 from discovery_forge.tools.search import DEFAULT_SEARCH_BACKEND
@@ -36,6 +35,17 @@ def parse_args() -> argparse.Namespace:
         "--verdict-dataset-ref",
         default=None,
         help="Published verdict dataset Weave ref (overrides evaluation/evaluation_config.yaml)",
+    )
+    discovery_group = parser.add_mutually_exclusive_group()
+    discovery_group.add_argument(
+        "--discovery-dataset-key",
+        default=None,
+        help=f"Configured discovery dataset key from evaluation/evaluation_config.yaml, e.g. {DISCOVERY_DATASET_KEY}",
+    )
+    discovery_group.add_argument(
+        "--discovery-dataset-ref",
+        default=None,
+        help="Published discovery dataset Weave ref (overrides evaluation/evaluation_config.yaml)",
     )
     parser.add_argument("--output-dir", type=Path, default=Path("eval_runs"), help="Base eval output directory")
     parser.add_argument(
@@ -57,6 +67,7 @@ def parse_args() -> argparse.Namespace:
         help="Maximum ResearcherAgent turns per evaluation row.",
     )
     parser.add_argument("--limit", type=int, default=None, help="Optional row limit for smoke runs")
+    parser.add_argument("--judge-model", default="gpt-5.4-mini", help="Model used by discovery LLM judge")
     parser.add_argument("--researcher-prompt-ref", default=None, help="Optional Weave StringPrompt ref")
     return parser.parse_args()
 
@@ -82,6 +93,24 @@ def main() -> None:
     )
     print("Verdict evaluation complete.")
     print(verdict_result)
+
+    if args.discovery_dataset_ref is None and args.discovery_dataset_key is None:
+        return verdict_result
+
+    discovery_dataset_ref = args.discovery_dataset_ref or get_eval_dataset_ref(args.discovery_dataset_key)
+    discovery_output_dir = args.output_dir / "discovery"
+    print("Running discovery quality evaluation...")
+    discovery_result = run_discovery_evaluation(
+        dataset_ref=discovery_dataset_ref,
+        output_dir=discovery_output_dir,
+        search_backend=args.search_backend,
+        limit=args.limit,
+        judge_model=args.judge_model,
+        researcher_prompt_ref=args.researcher_prompt_ref,
+    )
+    print("Discovery evaluation complete.")
+    print(discovery_result)
+    return verdict_result, discovery_result
 
 
 if __name__ == "__main__":
