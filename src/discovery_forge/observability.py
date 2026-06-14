@@ -166,6 +166,7 @@ class DiscoveryForgeWeaveTracingProcessor(WeaveTracingProcessor):
             "workflow_name": metadata.get("workflow_name"),
             "researcher_prompt_ref": metadata.get("researcher_prompt_ref"),
             "researcher_prompt_hash": metadata.get("researcher_prompt_hash"),
+            "researcher_model_ref": metadata.get("researcher_model_ref"),
         }
         if trace_id in self._accepted_profiles:
             return profile_review_output(

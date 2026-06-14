@@ -84,6 +84,39 @@ def publish_instruction_prompts(
     return versions
 
 
+def resolve_instruction_prompts(
+    *,
+    max_tools: int,
+    researcher_prompt_ref: str | None = None,
+    publish_local: bool = True,
+    instructions_dir: Path = INSTRUCTIONS_DIR,
+) -> dict[str, InstructionPromptVersion]:
+    """Resolve the researcher prompt from an explicit ref or local markdown.
+
+    Non-dry runs publish local prompt markdown first so every run and eval points
+    at a concrete Weave prompt version. An explicit prompt ref is already
+    versioned and is read without re-publishing.
+    """
+    if researcher_prompt_ref is None:
+        if publish_local:
+            return publish_instruction_prompts(max_tools=max_tools, instructions_dir=instructions_dir)
+        return load_local_instruction_prompts(max_tools=max_tools, instructions_dir=instructions_dir)
+
+    agent_name = "researcher"
+    object_name = PROMPT_OBJECT_NAMES[agent_name]
+    content = load_prompt_ref_content(researcher_prompt_ref)
+    return {
+        agent_name: InstructionPromptVersion(
+            agent_name=agent_name,
+            object_name=object_name,
+            content=content,
+            formatted_content=format_instruction_content(agent_name, content, max_tools=max_tools),
+            content_hash=instruction_hash(content),
+            ref_uri=researcher_prompt_ref,
+        )
+    }
+
+
 def prompt_hashes(versions: dict[str, InstructionPromptVersion]) -> dict[str, str]:
     return {agent: version.content_hash for agent, version in versions.items()}
 
@@ -114,7 +147,7 @@ def format_instruction_content(agent_name: str, content: str, *, max_tools: int)
     return content
 
 
-def _ref_uri(ref: Any) -> str | None:
+def weave_ref_uri(ref: Any) -> str | None:
     uri = getattr(ref, "uri", None)
     if callable(uri):
         return uri()
@@ -123,6 +156,10 @@ def _ref_uri(ref: Any) -> str | None:
     if ref is not None:
         return str(ref)
     return None
+
+
+def _ref_uri(ref: Any) -> str | None:
+    return weave_ref_uri(ref)
 
 
 def _get_prompt_from_ref(ref: Any, ref_uri: str | None) -> Any:

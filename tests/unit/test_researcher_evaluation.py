@@ -26,6 +26,18 @@ def test_verdict_quality_scorer_reports_mismatch():
     assert score["observed"] == "accepted"
 
 
+def test_verdict_quality_scorer_prefers_scope_status_for_compatibility():
+    from discovery_forge.evaluation.verdict import verdict_quality_scorer
+
+    score = verdict_quality_scorer(
+        {"scope_status": "unknown", "verdict": "no_new"},
+        "accepted",
+    )
+
+    assert score["is_correct"] is False
+    assert score["observed"] == "unknown"
+
+
 def test_profile_quality_scorer_scores_verdict_reason():
     from discovery_forge.evaluation.verdict import profile_quality_scorer
 
@@ -157,8 +169,13 @@ def test_researcher_eval_predict_fn_returns_saved_profile(tmp_path):
         return type("Result", (), {"final_output": "done"})()
 
     predict = make_researcher_eval_predict_fn(output_dir=tmp_path)
-    with patch("discovery_forge.evaluation.verdict.build_researcher_agent", side_effect=fake_build_researcher_agent), \
-        patch("discovery_forge.evaluation.verdict.Runner.run", new=AsyncMock(side_effect=fake_run)):
+    with patch(
+        "discovery_forge.agents.researcher_model.build_researcher_agent",
+        side_effect=fake_build_researcher_agent,
+    ), patch(
+        "discovery_forge.agents.researcher_model.Runner.run",
+        new=AsyncMock(side_effect=fake_run),
+    ):
         import asyncio
 
         output = asyncio.run(
@@ -169,8 +186,13 @@ def test_researcher_eval_predict_fn_returns_saved_profile(tmp_path):
             )
         )
 
+    assert output["verdict"] == "accepted"
     assert output["scope_status"] == "accepted"
-    assert output["profile"]["license"] == "Apache-2.0"
+    assert output["verdict_reason"] is None
+    assert output["final_output"] == "done"
+    assert output["tool_name"] == "Tool A"
+    assert "Tool Profile Review: Tool A" in output["profile_review_markdown"]
+    assert output["profile"]["slug"] == "tool-a"
 
 
 def test_researcher_eval_predict_fn_ignores_stale_row_output(tmp_path):
@@ -213,8 +235,13 @@ def test_researcher_eval_predict_fn_ignores_stale_row_output(tmp_path):
         return type("Result", (), {"final_output": "done"})()
 
     predict = make_researcher_eval_predict_fn(output_dir=tmp_path)
-    with patch("discovery_forge.evaluation.verdict.build_researcher_agent", side_effect=fake_build_researcher_agent), \
-        patch("discovery_forge.evaluation.verdict.Runner.run", new=AsyncMock(side_effect=fake_run)):
+    with patch(
+        "discovery_forge.agents.researcher_model.build_researcher_agent",
+        side_effect=fake_build_researcher_agent,
+    ), patch(
+        "discovery_forge.agents.researcher_model.Runner.run",
+        new=AsyncMock(side_effect=fake_run),
+    ):
         import asyncio
 
         output = asyncio.run(
@@ -226,7 +253,9 @@ def test_researcher_eval_predict_fn_ignores_stale_row_output(tmp_path):
         )
 
     assert (stale_dir / "_rejected_profiles.jsonl").exists()
+    assert output["verdict"] == "accepted"
     assert output["scope_status"] == "accepted"
+    assert output["final_output"] == "done"
 
 
 def test_researcher_eval_predict_fn_returns_rejected_profile(tmp_path):
@@ -251,8 +280,13 @@ def test_researcher_eval_predict_fn_returns_rejected_profile(tmp_path):
         return type("Result", (), {"final_output": "rejected"})()
 
     predict = make_researcher_eval_predict_fn(output_dir=tmp_path)
-    with patch("discovery_forge.evaluation.verdict.build_researcher_agent", side_effect=fake_build_researcher_agent), \
-        patch("discovery_forge.evaluation.verdict.Runner.run", new=AsyncMock(side_effect=fake_run)):
+    with patch(
+        "discovery_forge.agents.researcher_model.build_researcher_agent",
+        side_effect=fake_build_researcher_agent,
+    ), patch(
+        "discovery_forge.agents.researcher_model.Runner.run",
+        new=AsyncMock(side_effect=fake_run),
+    ):
         import asyncio
 
         output = asyncio.run(
@@ -263,12 +297,17 @@ def test_researcher_eval_predict_fn_returns_rejected_profile(tmp_path):
             )
         )
 
+    assert output["verdict"] == "rejected"
     assert output["scope_status"] == "rejected"
     assert output["verdict_reason"] == "Rejected as out of scope."
+    assert output["final_output"] == "rejected"
+    assert output["profile"] is None
+    assert "Rejected as out of scope." in output["profile_review_markdown"]
 
 
-def test_run_researcher_evaluation_uses_local_rows_without_publishing_dataset(tmp_path):
+def test_run_researcher_evaluation_uses_local_rows_and_model(tmp_path):
     from discovery_forge.evaluation import verdict as evaluation_module
+    from discovery_forge.tools.prompts import InstructionPromptVersion
 
     dataset_path = tmp_path / "dataset.jsonl"
     dataset_path.write_text(
@@ -282,57 +321,98 @@ def test_run_researcher_evaluation_uses_local_rows_without_publishing_dataset(tm
     )
     captured = {}
 
+    fake_prompt = InstructionPromptVersion(
+        agent_name="researcher",
+        object_name="researcher_instructions",
+        content="Prompt v1",
+        formatted_content="Prompt v1",
+        content_hash="hash123",
+        ref_uri="weave:///prompt:v1",
+    )
+
     class FakeEvaluation:
-        def __init__(self, *, dataset, scorers, evaluation_name, researcher_prompt_ref=None):
+        def __init__(self, **kwargs):
+            dataset = kwargs["dataset"]
+            scorers = kwargs["scorers"]
+            evaluation_name = kwargs["evaluation_name"]
             captured["dataset"] = dataset
             captured["scorers"] = scorers
             captured["evaluation_name"] = evaluation_name
-            captured["researcher_prompt_ref"] = researcher_prompt_ref
+            captured["researcher_prompt_ref"] = kwargs["researcher_prompt_ref"]
+            captured["researcher_prompt_hash"] = kwargs["researcher_prompt_hash"]
+            captured["researcher_model_ref"] = kwargs["researcher_model_ref"]
+            captured["preprocess_model_input"] = kwargs["preprocess_model_input"]
+            captured["metadata"] = kwargs["metadata"]
 
         async def evaluate(self, model):
             captured["model"] = model
             return {"ok": True}
 
     with patch.object(evaluation_module.weave, "Dataset") as dataset_cls, \
-        patch.object(evaluation_module, "load_prompt_ref_content", return_value="Prompt v1") as load_prompt, \
+        patch.object(evaluation_module, "resolve_instruction_prompts", return_value={"researcher": fake_prompt}) as resolve_prompts, \
+        patch.object(evaluation_module, "publish_researcher_model", return_value="weave:///model:v1") as publish_model, \
         patch.object(evaluation_module, "VerdictQualityEvaluation", FakeEvaluation):
         result = evaluation_module.run_researcher_evaluation(
             dataset_path=dataset_path,
             output_dir=tmp_path / "out",
-            researcher_prompt_ref="weave:///prompt:v1",
         )
 
     dataset_cls.assert_not_called()
-    load_prompt.assert_called_once_with("weave:///prompt:v1")
+    resolve_prompts.assert_called_once_with(max_tools=1, researcher_prompt_ref=None, publish_local=True)
+    publish_model.assert_called_once_with(captured["model"])
     assert result == {"ok": True}
     assert isinstance(captured["dataset"], list)
     assert captured["dataset"][0]["input_tool_name"] == "Tool A"
     assert [scorer.__name__ for scorer in captured["scorers"]] == ["verdict_quality_scorer"]
     assert captured["evaluation_name"] == "Verdict Quality Eval"
     assert captured["researcher_prompt_ref"] == "weave:///prompt:v1"
-    assert callable(captured["model"])
+    assert captured["researcher_prompt_hash"] == "hash123"
+    assert captured["researcher_model_ref"] == "weave:///model:v1"
+    assert captured["metadata"]["researcher_model_ref"] == "weave:///model:v1"
+    assert captured["model"].researcher_prompt_ref == "weave:///prompt:v1"
+    assert captured["preprocess_model_input"]({
+        "input_tool_name": "Tool A",
+        "input_candidate_url": "https://example.com/tool-a",
+        "input_candidate_description": "Runs experiments.",
+        "expected_scope_status": "accepted",
+    }) == {
+        "input_tool_name": "Tool A",
+        "input_candidate_url": "https://example.com/tool-a",
+        "input_candidate_description": "Runs experiments.",
+    }
 
 
 def test_run_researcher_evaluation_reuses_dataset_ref_object(tmp_path):
     from discovery_forge.evaluation import verdict as evaluation_module
+    from discovery_forge.tools.prompts import InstructionPromptVersion
 
     fake_dataset = type("FakeDataset", (), {"rows": [{"input_tool_name": "Tool A"}]})()
     captured = {}
+    fake_prompt = InstructionPromptVersion(
+        agent_name="researcher",
+        object_name="researcher_instructions",
+        content="Prompt v1",
+        formatted_content="Prompt v1",
+        content_hash="hash123",
+        ref_uri="weave:///prompt:v1",
+    )
 
     class FakeRef:
         def get(self):
             return fake_dataset
 
     class FakeEvaluation:
-        def __init__(self, *, dataset, scorers, evaluation_name, researcher_prompt_ref=None):
-            captured["dataset"] = dataset
-            captured["researcher_prompt_ref"] = researcher_prompt_ref
+        def __init__(self, **kwargs):
+            captured["dataset"] = kwargs["dataset"]
+            captured["researcher_prompt_ref"] = kwargs["researcher_prompt_ref"]
 
         async def evaluate(self, model):
             return {"ok": True}
 
     with patch.object(evaluation_module.weave, "ref", return_value=FakeRef()) as ref, \
         patch.object(evaluation_module.weave, "Dataset") as dataset_cls, \
+        patch.object(evaluation_module, "resolve_instruction_prompts", return_value={"researcher": fake_prompt}), \
+        patch.object(evaluation_module, "publish_researcher_model", return_value="weave:///model:v1"), \
         patch.object(evaluation_module, "VerdictQualityEvaluation", FakeEvaluation):
         result = evaluation_module.run_researcher_evaluation(
             dataset_ref="weave:///entity/project/object/researcher-eval-dataset:v1",
@@ -350,6 +430,7 @@ def test_run_researcher_evaluation_reuses_dataset_ref_object(tmp_path):
 
 def test_run_researcher_evaluation_ref_with_limit_uses_rows(tmp_path):
     from discovery_forge.evaluation import verdict as evaluation_module
+    from discovery_forge.tools.prompts import InstructionPromptVersion
 
     fake_dataset = type(
         "FakeDataset",
@@ -357,20 +438,30 @@ def test_run_researcher_evaluation_ref_with_limit_uses_rows(tmp_path):
         {"rows": [{"input_tool_name": "Tool A"}, {"input_tool_name": "Tool B"}]},
     )()
     captured = {}
+    fake_prompt = InstructionPromptVersion(
+        agent_name="researcher",
+        object_name="researcher_instructions",
+        content="Prompt v1",
+        formatted_content="Prompt v1",
+        content_hash="hash123",
+        ref_uri="weave:///prompt:v1",
+    )
 
     class FakeRef:
         def get(self):
             return fake_dataset
 
     class FakeEvaluation:
-        def __init__(self, *, dataset, scorers, evaluation_name, researcher_prompt_ref=None):
-            captured["dataset"] = dataset
+        def __init__(self, **kwargs):
+            captured["dataset"] = kwargs["dataset"]
 
         async def evaluate(self, model):
             return {"ok": True}
 
     with patch.object(evaluation_module.weave, "ref", return_value=FakeRef()), \
         patch.object(evaluation_module.weave, "Dataset") as dataset_cls, \
+        patch.object(evaluation_module, "resolve_instruction_prompts", return_value={"researcher": fake_prompt}), \
+        patch.object(evaluation_module, "publish_researcher_model", return_value="weave:///model:v1"), \
         patch.object(evaluation_module, "VerdictQualityEvaluation", FakeEvaluation):
         result = evaluation_module.run_researcher_evaluation(
             dataset_ref="weave:///entity/project/object/researcher-eval-dataset:v1",

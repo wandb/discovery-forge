@@ -100,6 +100,8 @@ def test_evaluate_entrypoint_runs_verdict_ref(tmp_path, monkeypatch):
         dataset_ref="weave:///verdict:v1",
         output_dir=tmp_path / "eval_runs" / "verdict",
         search_backend="serper",
+        recency="month",
+        max_turns=40,
         limit=1,
         researcher_prompt_ref=None,
     )
@@ -125,6 +127,8 @@ def test_evaluate_entrypoint_resolves_configured_dataset_key(tmp_path, monkeypat
         dataset_ref="weave:///verdict:v2",
         output_dir=tmp_path / "eval_runs" / "verdict",
         search_backend="serper",
+        recency="month",
+        max_turns=40,
         limit=None,
         researcher_prompt_ref=None,
     )

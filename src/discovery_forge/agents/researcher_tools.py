@@ -38,6 +38,10 @@ class ResearcherToolContext:
     save_tool_profile_callback: Callable[[ToolProfile], str] | None = None
     save_rejected_profile_callback: Callable[[RejectedProfile], str] | None = None
     report_no_new_tool_callback: Callable[[str], str] | None = None
+    search_query_observer: Callable[[str], None] | None = None
+    save_tool_profile_observer: Callable[[ToolProfile], None] | None = None
+    save_rejected_profile_observer: Callable[[RejectedProfile], None] | None = None
+    report_no_new_tool_observer: Callable[[str], None] | None = None
 
 
 def build_researcher_tools(context: ResearcherToolContext) -> list[Any]:
@@ -54,6 +58,8 @@ def build_researcher_tools(context: ResearcherToolContext) -> list[Any]:
         @function_tool
         def search_web(query: str) -> str:
             """Search the web using the configured backend. Returns source URLs/snippets."""
+            if context.search_query_observer is not None:
+                context.search_query_observer(query)
             return search_web_query(
                 query,
                 backend=context.search_backend,
@@ -132,6 +138,8 @@ def build_researcher_tools(context: ResearcherToolContext) -> list[Any]:
             project_url=project_url,
             source_ids=source_ids,
         )
+        if context.save_tool_profile_observer is not None:
+            context.save_tool_profile_observer(profile)
 
         if context.save_tool_profile_callback is not None:
             return context.save_tool_profile_callback(profile)
@@ -167,6 +175,9 @@ def build_researcher_tools(context: ResearcherToolContext) -> list[Any]:
             project_url=project_url,
             verdict_reason=verdict_reason,
         )
+        if context.save_rejected_profile_observer is not None:
+            context.save_rejected_profile_observer(rejected)
+
         if context.save_rejected_profile_callback is not None:
             return context.save_rejected_profile_callback(rejected)
 
@@ -179,6 +190,9 @@ def build_researcher_tools(context: ResearcherToolContext) -> list[Any]:
     @function_tool
     def report_no_new_tool(reason: str) -> str:
         """Signal that no new useful finding was found for this attempt."""
+        if context.report_no_new_tool_observer is not None:
+            context.report_no_new_tool_observer(reason)
+
         if context.report_no_new_tool_callback is not None:
             return context.report_no_new_tool_callback(reason)
 

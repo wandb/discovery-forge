@@ -21,6 +21,7 @@ from discovery_forge.evaluation.datasets import (
 from discovery_forge.evaluation.verdict import run_researcher_evaluation
 from discovery_forge.observability import init_observability
 from discovery_forge.tools.search import DEFAULT_SEARCH_BACKEND
+from discovery_forge.agents.researcher_model import DEFAULT_RESEARCHER_MAX_TURNS
 
 
 def parse_args() -> argparse.Namespace:
@@ -43,6 +44,18 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_SEARCH_BACKEND,
         help="Search backend. Defaults to serper; no fallback is attempted.",
     )
+    parser.add_argument(
+        "--since",
+        choices=["day", "week", "month", "year", "all"],
+        default="month",
+        help="Search recency hint. Use all to disable date filtering where supported.",
+    )
+    parser.add_argument(
+        "--max-turns",
+        type=int,
+        default=DEFAULT_RESEARCHER_MAX_TURNS,
+        help="Maximum ResearcherAgent turns per evaluation row.",
+    )
     parser.add_argument("--limit", type=int, default=None, help="Optional row limit for smoke runs")
     parser.add_argument("--researcher-prompt-ref", default=None, help="Optional Weave StringPrompt ref")
     return parser.parse_args()
@@ -62,6 +75,8 @@ def main() -> None:
         dataset_ref=verdict_dataset_ref,
         output_dir=verdict_output_dir,
         search_backend=args.search_backend,
+        recency=None if args.since == "all" else args.since,
+        max_turns=args.max_turns,
         limit=args.limit,
         researcher_prompt_ref=args.researcher_prompt_ref,
     )

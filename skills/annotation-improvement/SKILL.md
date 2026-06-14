@@ -46,7 +46,7 @@ Use the `wandb-primary` skill to fetch and inspect Weave evidence. This skill on
 - For explicit Weave call IDs, inspect exactly those calls.
 - For a day/run target, inspect the matching `research_run_*` root calls for that scope.
 - For an evaluation target, inspect the parent evaluation call and its child rows.
-- Read only the evidence needed for analysis: call identity, display name, output, attributes, summary, and feedback.
+- Read only the evidence needed for analysis: call identity, display name, output, attributes, summary, and feedback. Current ResearcherAgent outputs include reviewer payload fields (`profile_review_markdown`, `verdict`, `tool_name`, `primary_url`, `summary`, `search`, `run`) and may also include eval-compatible fields (`scope_status`, `verdict_reason`, `final_output`, `profile`).
 - Separate human annotations from runnable scorer feedback in the plan.
 
 ### Date Scope

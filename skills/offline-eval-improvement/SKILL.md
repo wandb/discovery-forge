@@ -37,6 +37,7 @@ Keep these inputs visible in every plan and report so workshop participants can 
 - Evaluation config: `src/discovery_forge/evaluation/evaluation_config.yaml`
 - Improvement history: `src/discovery_forge/agents/improve_history/<YYYY-MM-DD-HHMM-offline-eval>/plan.md` and `src/discovery_forge/agents/improve_history/<YYYY-MM-DD-HHMM-offline-eval>/applied.md`
 - Primary metric: `verdict_quality_scorer.is_correct.true_fraction`
+- Versioning behavior: when `evaluate.py` uses the local prompt, it publishes the current `researcher.md` as a Weave `StringPrompt` and publishes `ResearcherAgentModel` for the run. Use `--researcher-prompt-ref` only when intentionally comparing a fixed published prompt version.
 
 ## Prompt Edit Scope
 
@@ -89,7 +90,7 @@ These keep edits general (no cherry-picking specific candidates) while avoiding 
 
 7. Use the `wandb-primary` skill to inspect the parent evaluation call.
 8. Use the `wandb-primary` skill to inspect the child row calls.
-9. Pull only the fields needed for diagnosis: row inputs, expected labels, model output, scorer outputs, call status, and prompt ref/hash metadata when present. For the current verdict eval, include `expected_scope_status`, output `scope_status`, `verdict_reason`, `final_output`, and `verdict_quality_scorer.is_correct`.
+9. Pull only the fields needed for diagnosis: row inputs, expected labels, model output, scorer outputs, call status, and prompt/model ref metadata when present. For the current verdict eval, include `expected_scope_status`, output `scope_status`, `verdict`, `verdict_reason`, `final_output`, `profile_review_markdown`, `run.researcher_prompt_ref`, `run.researcher_prompt_hash`, `run.researcher_model_ref`, and `verdict_quality_scorer.is_correct`.
 10. Filter to rows where the primary scorer failed. Keep a small sample of passing rows only when needed to avoid changing behavior that already works.
 11. Group failures into prompt-policy patterns. For verdict eval:
    - expected `rejected`, observed `accepted`: scope filter is too permissive.
@@ -106,9 +107,9 @@ Use the `wandb-primary` skill to fetch and inspect Weave Evaluation evidence. Th
 - Parent evaluation call: the exact eval call ID or link under analysis.
 - Child row calls: the dataset-row-level evaluation results under that parent.
 - Dataset row inputs: candidate name, candidate URL, description, and `expected_scope_status`.
-- Model output: `scope_status`, `verdict_reason`, and `final_output`.
+- Model output: reviewer payload (`profile_review_markdown`, `verdict`, `tool_name`, `primary_url`, `summary`, `search`, `run`) plus eval-compatible fields (`scope_status`, `verdict_reason`, `final_output`, and `profile` when available). For accepted/rejected rows, `scope_status` should mirror `verdict`; scorers read `scope_status` first for compatibility.
 - Scorer output: `verdict_quality_scorer.is_correct` and any supporting scorer detail.
-- Prompt metadata: prompt ref/hash when present.
+- Prompt/model metadata: prompt ref/hash and `ResearcherAgentModel` ref when present.
 
 Inspect one child row first to learn the shape, then extract the smallest stable set of fields needed to identify failed verdict rows.
 
@@ -123,6 +124,8 @@ Use this structure:
 - Dataset: <dataset key or full ref>
 - Dataset ref: <resolved published Weave Dataset ref>
 - Start prompt: <local path or Weave StringPrompt ref>
+- Baseline prompt ref/hash: <published prompt ref and hash from the run>
+- Baseline ResearcherAgentModel ref: <published model ref from the run>
 - Baseline Weave Evaluation parent call: <eval-call-id or link>
 - Baseline metric: `verdict_quality_scorer.is_correct` = <value>
 - Max iterations: <n>
@@ -154,7 +157,7 @@ Use this structure:
 ## Apply Rules
 
 - Prompt-only changes may edit only `src/discovery_forge/agents/researcher.md`.
-- This is a development workflow: do not publish `researcher.md` to Weave during improvement iterations unless the user explicitly asks.
+- Evaluation reruns publish the local `researcher.md` prompt and `ResearcherAgentModel` by design so every run has version refs in Weave. Do not change `evaluate.py`, datasets, labels, or scorers to force a better score.
 - Before each prompt edit, create the next backup file: `researcher_backup_0.md`, then `researcher_backup_1.md`, and so on. Never overwrite an existing backup.
 - Do not change evaluation datasets, labels, scorers, or `evaluate.py` to make results look better.
 - Do not create fallback behavior.
@@ -169,7 +172,7 @@ After editing, write `src/discovery_forge/agents/improve_history/<YYYY-MM-DD-HHM
 
 ## Local Prompt Iteration
 
-During development, evaluate the local prompt file directly. Do not pass `--researcher-prompt-ref` and do not publish the prompt between iterations unless the user explicitly asks to compare a published prompt ref.
+During development, evaluate the local prompt file directly. Do not pass `--researcher-prompt-ref`; `evaluate.py` will publish the current local prompt and `ResearcherAgentModel` for each run so the result is versioned. Pass `--researcher-prompt-ref` only when the goal is to compare a fixed published prompt ref.
 
 Run no more than the requested max iterations. Stop early if the primary metric improves enough for the user's goal, if the remaining failures are dataset/scorer maintenance issues, or if two consecutive focused edits regress the baseline.
 
@@ -219,6 +222,7 @@ Report:
 - number of failed rows inspected
 - failure patterns found
 - prompt changes made
+- prompt ref/hash and `ResearcherAgentModel` ref used by each rerun
 - both error directions after rerun: false accepts fixed AND any new false rejects introduced
 - backup file created
 - tests run
