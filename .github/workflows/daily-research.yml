@@ -1,9 +1,6 @@
 name: Daily Research
 
 on:
-  # KST daily 8:00 AM = UTC previous day 23:00
-  schedule:
-    - cron: '0 23 * * *'
   workflow_dispatch:
     inputs:
       day:
@@ -50,6 +47,7 @@ concurrency:
 
 jobs:
   run:
+    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 60
 

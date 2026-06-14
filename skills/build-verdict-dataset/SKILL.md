@@ -7,22 +7,15 @@ description: Guides coding agents through building the verdict_quality_dataset f
 
 Use this skill to create or refresh `verdict_quality_dataset` from human annotations in Weave, then publish it as a versioned Weave Dataset and pin the ref.
 
-The coding agent queries annotated `research_run_<i>` calls, extracts candidate fields, maps the human verdict to a gold label, refines each row against the rubric, writes a local JSONL plus an audit report, publishes the dataset, and updates `VERDICT_DATASET_REF`.
+The coding agent queries annotated `research_run_<i>` calls, extracts candidate fields, maps the human verdict to a gold label, refines each row against the rubric, writes a local JSONL plus an audit report, publishes the dataset, and updates the pinned ref in `evaluation_config.yaml`.
 
 This skill **does not change the human annotation results themselves**. It only transforms annotation evidence into a clean eval dataset and records provenance.
 
 ## Before You Start
 
-Read the official W&B Skills guidance for the surfaces involved:
+Follow `AGENTS.md` W&B Skills setup first. Use W&B Skills for Weave trace, feedback, annotation, and dataset access; this skill only defines the Discovery Forge dataset-building workflow.
 
-- Install if needed: `npx skills add wandb/skills`
-- Local weave skill references when present:
-  - `~/.claude/skills/weave/SKILL.md`
-  - `~/.claude/skills/weave/references/feedback.md`
-  - `~/.claude/skills/weave/references/datasets.md`
-- Upstream source: https://github.com/wandb/skills
-
-Do not use W&B MCP tools in this workflow. Fetch trace and feedback evidence directly through the Weave Python SDK/trace server API.
+Fetch all trace and feedback evidence live from Weave through W&B Skills. Do not use W&B MCP tools, and do not add discovery-forge query wrappers.
 
 ## Default Project
 
@@ -32,7 +25,7 @@ Do not use W&B MCP tools in this workflow. Fetch trace and feedback evidence dir
 - Annotation queue: `research_annotation`
 - Root trace unit: one `research_run_<i>` / `openai_agent_trace` call per reviewed candidate
 - Dataset name: `verdict_quality_dataset`
-- Pinned ref: `src/discovery_forge/evaluation/datasets.py` `VERDICT_DATASET_REF`
+- Pinned ref: `src/discovery_forge/evaluation/evaluation_config.yaml` `datasets.verdict_quality.ref`
 - Publish helper: `discovery_forge.evaluation.datasets.publish_eval_dataset`
 - Labeling standard: `src/discovery_forge/evaluation/verdict_dataset_rubric.md`
 - Local outputs: `src/discovery_forge/evaluation/datasets/verdict_quality_dataset_clean_<YYYY-MM-DD>.jsonl` and `verdict_quality_dataset_audit_<YYYY-MM-DD>.md`
@@ -52,8 +45,8 @@ Each dataset row must contain:
 
 ## Workflow
 
-1. Identify the source scope: a day, a set of `research_run` call IDs, or "all reviewed items in `research_annotation`". Prefer an explicit run day or call-ID list over "every historical annotation".
-2. Initialize Weave and query the annotated root calls with `include_feedback=True`.
+1. Identify the source scope: a set of `research_run` call IDs (from the user or a Weave UI link), a run day, or "all reviewed items in `research_annotation`". Prefer an explicit call-ID list or run day over "every historical annotation". Get call IDs from Weave, not from local files.
+2. Use W&B Skills to fetch the annotated root calls and feedback **from Weave**.
 3. For each call, separate human annotations (`wandb.annotation.QualitySelector`, `wandb.annotation.QualityReviewer`) from runnable scorer feedback. Use only `research_annotation` human annotations as the verdict seed; do not seed labels from runnable scorers.
 4. Inspect one call first to learn the exact `output` shape, then extract the candidate name, primary URL, and a pre-verdict description plus the human reviewer's rationale.
 5. Map the human `QualitySelector` to a draft gold label:
@@ -62,43 +55,19 @@ Each dataset row must contain:
    - `Neutral` -> **ask the user how to handle it.** Do not silently auto-assign. Present each neutral candidate with its `QualityReviewer` rationale and a recommended verdict (`accepted` with `key_limitations`, `rejected`, or `drop`), then let the user decide per row or give a blanket rule. Only fall back to a provisional label + `needs_review` flag if the user explicitly defers or says to proceed without them.
 6. Refine each row against `verdict_dataset_rubric.md` (see Labeling and Hygiene). Record `keep` / `relabel` / `drop` / `needs_review` with a reason.
 7. Write the clean JSONL and the audit report.
-8. Publish the dataset and update `VERDICT_DATASET_REF`.
+8. Publish the dataset and update `datasets.verdict_quality.ref` in `src/discovery_forge/evaluation/evaluation_config.yaml`.
 9. Validate.
 
-### Query Annotated Calls With Weave SDK
+### Evidence Selection
 
-Follow W&B Skills guidance and query Weave directly. Do not add discovery-forge helper wrappers for call queries.
+Use W&B Skills to fetch and inspect Weave evidence. This skill only defines which Discovery Forge evidence matters:
 
-```python
-import weave
-from weave.trace_server.trace_server_interface import CallsFilter, CallsQueryReq
-
-from discovery_forge.observability import weave_project_path
-
-call_ids = ["<research_run_call_id>", "..."]  # or build from a day's _profile_runs.jsonl
-
-client = weave.init(weave_project_path())
-response = client.server.calls_query(
-    CallsQueryReq(
-        project_id=client.project_id,
-        filter=CallsFilter(call_ids=call_ids),
-        include_feedback=True,
-        limit=len(call_ids),
-    )
-)
-
-for call in response.calls:
-    annotations = [
-        f for f in (call.feedback or [])
-        if str(f.get("feedback_type", "")).startswith("wandb.annotation")
-    ]
-    print(call.id, call.display_name, len(annotations))
-    print(call.output)
-    for a in annotations:
-        print(a.get("feedback_type"), a.get("payload"))
-```
-
-Read `call.feedback` from the response. Keep only annotations whose call belongs to the requested scope, and deduplicate by feedback ID.
+- Root trace unit: one `research_run_<i>` / `openai_agent_trace` call per reviewed candidate.
+- Inspect only calls in the requested source scope.
+- Keep only human annotations from `research_annotation` (`QualitySelector`, `QualityReviewer`) as verdict seeds.
+- Do not seed labels from runnable scorer feedback.
+- Deduplicate annotations by feedback ID.
+- Inspect one representative call first to learn where candidate name, primary URL, description, reviewer rationale, and annotation payload live.
 
 ## Labeling and Hygiene
 
@@ -146,7 +115,7 @@ print(result)
 PY
 ```
 
-Then update `VERDICT_DATASET_REF` in `src/discovery_forge/evaluation/datasets.py` to the new digest. Preserve older versions; publish a new one rather than overwriting.
+Then update `datasets.verdict_quality.ref` in `src/discovery_forge/evaluation/evaluation_config.yaml` to the new digest. Preserve older versions; publish a new one rather than overwriting.
 
 ## Validation
 
@@ -172,6 +141,6 @@ Report:
 - source scope (day / call IDs / queue) and number of annotations used
 - row count and accepted/rejected distribution
 - rows relabeled or dropped, with rubric reasons and primary sources
-- published dataset ref and the updated `VERDICT_DATASET_REF`
+- published dataset ref and the updated `evaluation_config.yaml` entry
 - validation results (tests, eval run, ref resolves)
 - rows left as `needs_review`

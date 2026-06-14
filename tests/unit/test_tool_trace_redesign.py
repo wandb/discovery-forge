@@ -272,6 +272,7 @@ def test_processor_trace_end_merges_registered_review_output(monkeypatch):
             "recency": "year",
             "researcher_prompt_hash": "abc123",
             "researcher_prompt_ref": "weave:///prompt:v1",
+            "researcher_model_ref": "weave:///model:v1",
         },
     }
     processor._trace_calls["trace-1"] = object()
@@ -294,6 +295,7 @@ def test_processor_trace_end_merges_registered_review_output(monkeypatch):
         "workflow_name": "research_run_1",
         "researcher_prompt_ref": "weave:///prompt:v1",
         "researcher_prompt_hash": "abc123",
+        "researcher_model_ref": "weave:///model:v1",
     }
     assert "metrics" not in finished["output"]
     assert "metadata" not in finished["output"]
@@ -536,9 +538,16 @@ async def test_run_briefing_retries_unknown_then_marks_no_new(tmp_path, monkeypa
     }
     runner = AsyncMock(return_value=SimpleNamespace(raw_responses=[]))
 
-    monkeypatch.setattr("discovery_forge.tools.prompts.publish_instruction_prompts", lambda max_tools: fake_versions)
+    monkeypatch.setattr(
+        "discovery_forge.tools.prompts.resolve_instruction_prompts",
+        lambda max_tools, publish_local=True: fake_versions,
+    )
+    monkeypatch.setattr(
+        "discovery_forge.agents.researcher_model.publish_researcher_model",
+        lambda model: "weave:///model:v1",
+    )
     monkeypatch.setattr(orchestrator.weave, "attributes", lambda attrs: NullContext())
-    monkeypatch.setattr(orchestrator.Runner, "run", runner)
+    monkeypatch.setattr("discovery_forge.agents.researcher_model.Runner.run", runner)
     monkeypatch.setattr(orchestrator, "get_agent_trace_call_metadata", lambda trace_id: (f"call-{trace_id}", None))
 
     await orchestrator.run_briefing(

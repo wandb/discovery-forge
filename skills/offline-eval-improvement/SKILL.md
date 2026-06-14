@@ -1,27 +1,30 @@
 ---
 name: offline-eval-improvement
-description: Guides coding agents through prompt improvement for discovery-forge using W&B Weave offline evaluation results, failed eval rows, and verdict_quality_scorer evidence. Use when the user asks to improve researcher.md from Verdict Quality Eval results, compare offline eval runs, or raise verdict_quality_dataset performance.
+description: Guides coding agents through Discovery Forge prompt improvement from a specified Weave offline evaluation baseline. Use `wandb-primary` to fetch evaluation results, failed eval rows, dataset refs, prompt refs, and scorer evidence, then use this workflow when improving researcher.md from failed evaluation rows, comparing eval runs, or iterating on a fixed dataset.
 ---
 
 # Offline Eval Improvement
 
-Use this skill when improving `src/discovery_forge/agents/researcher.md` from Weave Evaluation evidence rather than daily annotation queues.
+Use this skill when improving `src/discovery_forge/agents/researcher.md` from Weave Evaluation evidence fetched with the `wandb-primary` skill rather than daily annotation queues.
 
-The coding agent inspects an evaluation run, analyzes failed rows, writes a plan, backs up the current prompt, edits the local prompt, validates the change, reruns the same pinned dataset, and reports the before/after result.
+The coding agent starts from explicit experiment inputs, inspects the baseline evaluation run, analyzes failed rows, writes a plan, backs up the starting prompt, edits the local prompt, validates the change, reruns the same dataset, and reports the before/after result for each iteration.
 
 ## Before You Start
 
-Read the official W&B Skills guidance for the surfaces involved:
+Follow `AGENTS.md` setup first, then select and use the installed `wandb-primary` skill for Weave evaluation, dataset, trace, and scorer evidence. This skill only defines the Discovery Forge offline-eval improvement workflow.
 
-- Install if needed: `npx skills add wandb/skills`
-- Local weave skill references when present:
-  - `~/.claude/skills/weave/SKILL.md`
-  - `~/.claude/skills/weave/references/evaluation.md`
-  - `~/.claude/skills/weave/references/datasets.md`
-  - `~/.claude/skills/weave/references/prompts.md`
-- Upstream source: https://github.com/wandb/skills
+Fetch all evaluation evidence live from Weave through `wandb-primary` skill guidance, including its Weave SDK / W&B API patterns. Do not use W&B MCP tools, and do not add discovery-forge query wrappers.
 
-Do not use W&B MCP tools in this workflow. Fetch evaluation evidence directly through the Weave Python SDK/trace server API.
+## Required Inputs
+
+Ask for or infer these inputs before editing. First check `src/discovery_forge/evaluation/evaluation_config.yaml` and use its `offline_eval_improvement` values when present. If any input is still missing and cannot be inferred from the user's request or latest `evaluate.py` output, stop and ask for it.
+
+- Dataset: a configured dataset key such as `verdict_quality`, or a full published Weave Dataset ref.
+- Start prompt: the local prompt file to improve, or a Weave `StringPrompt` ref to inspect as the starting baseline. Default local file is `src/discovery_forge/agents/researcher.md`.
+- Baseline evaluation ID: the Weave Evaluation parent call ID or URL that represents the score to beat.
+- Max iterations: maximum number of prompt edit + eval cycles to run before reporting back.
+
+Keep these inputs visible in every plan and report so workshop participants can see which dataset, prompt, baseline, and iteration budget they are using.
 
 ## Default Project
 
@@ -31,31 +34,22 @@ Do not use W&B MCP tools in this workflow. Fetch evaluation evidence directly th
 - Prompt file: `src/discovery_forge/agents/researcher.md`
 - Prompt backups: `src/discovery_forge/agents/researcher_backup_<N>.md`
 - Evaluation entrypoint: `uv run python evaluate.py`
-- Pinned verdict dataset: `src/discovery_forge/evaluation/datasets.py` `VERDICT_DATASET_REF`
+- Evaluation config: `src/discovery_forge/evaluation/evaluation_config.yaml`
 - Improvement history: `src/discovery_forge/agents/improve_history/<YYYY-MM-DD-HHMM-offline-eval>/plan.md` and `src/discovery_forge/agents/improve_history/<YYYY-MM-DD-HHMM-offline-eval>/applied.md`
 - Primary metric: `verdict_quality_scorer.is_correct.true_fraction`
+- Versioning behavior: when `evaluate.py` uses the local prompt, it publishes the current `researcher.md` as a Weave `StringPrompt` and publishes `ResearcherAgentModel` for the run. Use `--researcher-prompt-ref` only when intentionally comparing a fixed published prompt version.
 
-## Change Budget
+## Prompt Edit Scope
 
-Control how **aggressively** the prompt may change in one iteration.
-
-If the user does not specify otherwise, treat the change budget as **`medium`** — a moderate, focused edit covering one or two related clusters, paired with accept-protection. On a small, partly search-dependent eval, a single tiny edit's effect (~2-3 rows) can sit inside the run-to-run noise band (~±2-3 rows), so `low` steps need multiple-run averaging to read; `high` moves fastest but is harder to trace. `medium` is the default balance. Use `low` for smaller, more traceable steps or `high` for a one-pass rewrite when the user asks.
-
-| Change budget | Edit posture | Scope this iteration |
-| --- | --- | --- |
-| `low` | Conservative. Prefer a few bullets or a short clarification inside an existing section. | One failure cluster only. |
-| `medium` (default) | Moderate. One focused subsection or a small combination of related edits. | Up to two related clusters. |
-| `high` | Broad. A full policy block (for example a complete verdict gate) is allowed in one pass. | Multiple clusters together. |
-
-When making a broad edit, pair every new reject rule with an explicit accept-protection clause (for example "missing metadata is a profile limitation, not a scope failure") so that tightening one cluster does not push correctly-accepted rows into false rejects.
+Each improvement iteration should make a focused, policy-level prompt edit that covers one or two related failure clusters. Pair every new reject rule with an explicit accept-protection clause (for example "missing metadata is a profile limitation, not a scope failure") so that tightening one cluster does not push correctly-accepted rows into false rejects.
 
 ### Rules
 
-- At the default `medium` budget, cover one or two related failure clusters in a focused edit; keep every change **policy-level** (artifact types, loop evidence, output discipline), not candidate-specific cheats.
+- Cover one or two related failure clusters in a focused edit; keep every change **policy-level** (artifact types, loop evidence, output discipline), not candidate-specific cheats.
 - Pair reject rules with accept-protection so tightening one cluster does not create false rejects elsewhere.
 - After each iteration, rerun `evaluate.py`. Because a single run varies by ~±2-3 rows, rerun 2-3 times (or compare per-row stability) before trusting a change. If the metric regresses across runs, revert to the backup and retry.
 - Do not hardcode dataset row IDs or candidate names as a lookup table in the prompt.
-- At `low`/`medium`, record in `plan.md` what you are **not** changing this iteration so the next pass has a clear queue.
+- Record in `plan.md` what you are **not** changing this iteration so the next pass has a clear queue.
 
 ### Prompt-edit guardrails
 
@@ -67,84 +61,57 @@ These keep edits general (no cherry-picking specific candidates) while avoiding 
 - Every iteration, check **both** error directions on the rerun: count new false rejects (accepted→rejected) as well as fixed false accepts. A change that fixes one cluster but flips several correct accepts is a net regression even if it "sounds stricter".
 - Before keeping an edit, ask: would this sentence change the verdict on candidates I did not intend to touch? If yes, it is too broad — narrow it to the targeted artifact type or behavior.
 
-### Failure clusters to cover
-
-A broad (`high`) edit should address these together; smaller budgets take them one at a time:
+### Common Failure Clusters
 
 1. Wrong artifact type (survey, cookbook, guide, list-like sources)
 2. Adjacent infrastructure (memory-only, testing gate, repo-automation host, generic framework)
 3. Weak-evidence or over-strict edge cases (protect correctly-accepted loop runners)
 
-### Plan `Change Budget` section
-
-Add this block to every `plan.md`:
-
-```markdown
-## Change Budget
-- Change budget: medium (default) | low | high
-- Edit posture: <e.g. broad — full Candidate Verdict Mode with reject rules + accept protection>
-- Target cluster this iteration: <one pattern + example candidates>
-- Deferred to next iteration: <remaining failure patterns>
-```
-
 ## Evidence Workflow
 
-1. Identify the target Weave Evaluation run from a Weave link, eval call ID, or the latest `evaluate.py` console output.
-2. If no evaluation run exists yet, run the baseline once with the pinned dataset:
+1. Record the required inputs: dataset, start prompt, baseline evaluation ID, and max iterations.
+2. Resolve the dataset:
+   - If the user gave a dataset key, read `src/discovery_forge/evaluation/evaluation_config.yaml` and use that key's `ref`.
+   - If the config defines `offline_eval_improvement.dataset_key`, use that key unless the user supplied a different one.
+   - If the user gave a full Weave Dataset ref, use it directly for this loop.
+3. Resolve the start prompt:
+   - If the config defines `offline_eval_improvement.start_prompt`, use that path unless the user supplied a different prompt.
+   - If the user gave a local path, read that file and treat it as the editable prompt.
+   - If the user gave a Weave `StringPrompt` ref, inspect it through `wandb-primary`, then decide with the user whether to copy its content into the local editable prompt.
+   - If unspecified, use `src/discovery_forge/agents/researcher.md`.
+4. Resolve max iterations from the user's request or `offline_eval_improvement.max_iterations`.
+5. Inspect the baseline Weave Evaluation parent call from the given call ID or URL. If `offline_eval_improvement.baseline_evaluation_id` is set, use that as the default baseline.
+6. If no baseline evaluation run exists yet, run one with the selected dataset and start prompt, then use that new parent call as the baseline:
 
    ```bash
-   uv run python evaluate.py
+   uv run python evaluate.py --verdict-dataset-key '<dataset-key>'
+   # or: uv run python evaluate.py --verdict-dataset-ref '<dataset-ref>'
    ```
 
-3. Query the parent evaluation call with `CallsFilter(call_ids=[eval_call_id])`.
-4. Query child row calls with `CallsFilter(parent_ids=[eval_call_id])`.
-5. Pull only the fields needed for diagnosis: row inputs, `expected_scope_status`, output `scope_status`, `verdict_reason`, `final_output`, scorer outputs, call status, and prompt ref/hash metadata when present.
-6. Filter to rows where `verdict_quality_scorer.is_correct` is false. Keep a small sample of passing rows only when needed to avoid changing behavior that already works.
-7. Group failures into prompt-policy patterns:
+7. Use the `wandb-primary` skill to inspect the parent evaluation call.
+8. Use the `wandb-primary` skill to inspect the child row calls.
+9. Pull only the fields needed for diagnosis: row inputs, expected labels, model output, scorer outputs, call status, and prompt/model ref metadata when present. For the current verdict eval, include `expected_scope_status`, output `scope_status`, `verdict`, `verdict_reason`, `final_output`, `profile_review_markdown`, `run.researcher_prompt_ref`, `run.researcher_prompt_hash`, `run.researcher_model_ref`, and `verdict_quality_scorer.is_correct`.
+10. Filter to rows where the primary scorer failed. Keep a small sample of passing rows only when needed to avoid changing behavior that already works.
+11. Group failures into prompt-policy patterns. For verdict eval:
    - expected `rejected`, observed `accepted`: scope filter is too permissive.
    - expected `accepted`, observed `rejected`: scope filter is too strict or treats metadata weakness as scope failure.
    - observed `unknown`: agent failed to call either save tool; improve the decision/output discipline.
-8. Read the current `researcher.md`.
-9. Write `src/discovery_forge/agents/improve_history/<YYYY-MM-DD-HHMM-offline-eval>/plan.md` before editing. Use the local execution start time for the directory name, for example `2026-06-12-1505-offline-eval`. If the file already exists for that improvement loop, update it instead of creating a new call-ID directory.
-10. Before editing, preserve the current prompt as `src/discovery_forge/agents/researcher_backup_<N>.md`, where `<N>` is the next available integer starting from `0`.
+12. Read the local prompt that will be edited.
+13. Write `src/discovery_forge/agents/improve_history/<YYYY-MM-DD-HHMM-offline-eval>/plan.md` before editing. Use the local execution start time for the directory name, for example `2026-06-12-1505-offline-eval`. If the file already exists for that improvement loop, update it instead of creating a new call-ID directory.
+14. Before editing, preserve the current prompt as `src/discovery_forge/agents/researcher_backup_<N>.md`, where `<N>` is the next available integer starting from `0`.
 
-### Query Evaluation Rows With Weave SDK
+### Evaluation Evidence Selection
 
-Follow W&B Skills guidance and query Weave directly. Do not add discovery-forge helper wrappers for call queries.
+Use the `wandb-primary` skill to fetch and inspect Weave Evaluation evidence. This skill only defines which Discovery Forge evidence matters:
 
-```python
-import weave
-from weave.trace_server.trace_server_interface import CallsFilter, CallsQueryReq
+- Parent evaluation call: the exact eval call ID or link under analysis.
+- Child row calls: the dataset-row-level evaluation results under that parent.
+- Dataset row inputs: candidate name, candidate URL, description, and `expected_scope_status`.
+- Model output: reviewer payload (`profile_review_markdown`, `verdict`, `tool_name`, `primary_url`, `summary`, `search`, `run`) plus eval-compatible fields (`scope_status`, `verdict_reason`, `final_output`, and `profile` when available). For accepted/rejected rows, `scope_status` should mirror `verdict`; scorers read `scope_status` first for compatibility.
+- Scorer output: `verdict_quality_scorer.is_correct` and any supporting scorer detail.
+- Prompt/model metadata: prompt ref/hash and `ResearcherAgentModel` ref when present.
 
-from discovery_forge.observability import weave_project_path
-
-eval_call_id = "<eval-call-id>"
-
-client = weave.init(weave_project_path())
-
-parent = client.server.calls_query(
-    CallsQueryReq(
-        project_id=client.project_id,
-        filter=CallsFilter(call_ids=[eval_call_id]),
-        limit=1,
-    )
-)
-
-children = client.server.calls_query(
-    CallsQueryReq(
-        project_id=client.project_id,
-        filter=CallsFilter(parent_ids=[eval_call_id]),
-        limit=100,
-    )
-)
-
-for call in children.calls:
-    output = call.output or {}
-    scores = output.get("scores") or output.get("scorer_outputs") or {}
-    print(call.id, call.display_name, scores)
-```
-
-The exact shape of `call.output` can vary by Weave version. Inspect one child row first, then extract the smallest stable set of fields needed to identify failed verdict rows.
+Inspect one child row first to learn the shape, then extract the smallest stable set of fields needed to identify failed verdict rows.
 
 ## Plan Format
 
@@ -154,17 +121,22 @@ Use this structure:
 # Offline Eval Prompt Improvement Plan for <YYYY-MM-DD-HHMM-offline-eval>
 
 ## Source
-- Weave Evaluation parent call: <eval-call-id or link>
-- Dataset ref: <pinned verdict dataset ref>
+- Dataset: <dataset key or full ref>
+- Dataset ref: <resolved published Weave Dataset ref>
+- Start prompt: <local path or Weave StringPrompt ref>
+- Baseline prompt ref/hash: <published prompt ref and hash from the run>
+- Baseline ResearcherAgentModel ref: <published model ref from the run>
+- Baseline Weave Evaluation parent call: <eval-call-id or link>
 - Baseline metric: `verdict_quality_scorer.is_correct` = <value>
+- Max iterations: <n>
+- Current iteration: <i>/<n>
 - Failed rows inspected: <n>
 - Current `researcher.md` inspected
 
-## Change Budget
-- Change budget: medium
-- Edit posture: <how broad the prompt edit will be>
-- Clusters covered this iteration: <patterns>
-- Deferred to next iteration: <remaining patterns, if any>
+## Prompt Edit Scope
+- Target clusters this iteration: <one or two related failure patterns>
+- Accept-protection: <passing behavior that must stay stable>
+- Deferred patterns: <remaining failure patterns, if any>
 
 ## Failure Summary
 - <concrete failure pattern with candidate examples>
@@ -179,13 +151,13 @@ Use this structure:
 - `src/discovery_forge/agents/researcher.md`
 
 ## Out of Scope
-- Dataset rows, labels, scorer logic, evaluation runner, registry, schemas, and search backend behavior are not changed.
+- Dataset rows, labels, scorer logic, evaluation runner, registry, schemas, and search backend behavior are not changed during prompt iteration.
 ```
 
 ## Apply Rules
 
 - Prompt-only changes may edit only `src/discovery_forge/agents/researcher.md`.
-- This is a development workflow: do not publish `researcher.md` to Weave during improvement iterations unless the user explicitly asks.
+- Evaluation reruns publish the local `researcher.md` prompt and `ResearcherAgentModel` by design so every run has version refs in Weave. Do not change `evaluate.py`, datasets, labels, or scorers to force a better score.
 - Before each prompt edit, create the next backup file: `researcher_backup_0.md`, then `researcher_backup_1.md`, and so on. Never overwrite an existing backup.
 - Do not change evaluation datasets, labels, scorers, or `evaluate.py` to make results look better.
 - Do not create fallback behavior.
@@ -200,17 +172,27 @@ After editing, write `src/discovery_forge/agents/improve_history/<YYYY-MM-DD-HHM
 
 ## Local Prompt Iteration
 
-During development, evaluate the local `researcher.md` file directly. Do not pass `--researcher-prompt-ref` and do not publish the prompt between iterations.
+During development, evaluate the local prompt file directly. Do not pass `--researcher-prompt-ref`; `evaluate.py` will publish the current local prompt and `ResearcherAgentModel` for each run so the result is versioned. Pass `--researcher-prompt-ref` only when the goal is to compare a fixed published prompt ref.
+
+Run no more than the requested max iterations. Stop early if the primary metric improves enough for the user's goal, if the remaining failures are dataset/scorer maintenance issues, or if two consecutive focused edits regress the baseline.
 
 For each iteration:
 
-1. Unless the user asks otherwise, use the default change budget `medium`: a focused edit covering one or two related clusters with paired accept-protection.
+1. Update `plan.md` with the current iteration number, selected dataset ref, start prompt, baseline eval ID, target cluster, and deferred patterns.
 2. Create the next backup file.
-3. Apply the policy-level edit for the targeted clusters.
+3. Make a focused edit covering one or two related clusters with paired accept-protection.
 4. Run focused validation.
-5. Run `uv run python evaluate.py` 2-3 times (single-run variance is ~±2-3 rows).
-6. Keep the change only if the pinned dataset metric improves across runs without unacceptable row-level regressions.
-7. If correctly-accepted rows flipped to rejected, strengthen the accept-protection clause and rerun.
+5. Run the same selected dataset:
+
+   ```bash
+   uv run python evaluate.py --verdict-dataset-key '<dataset-key>'
+   # or: uv run python evaluate.py --verdict-dataset-ref '<dataset-ref>'
+   ```
+
+6. Compare the new run against the baseline evaluation ID and the previous iteration.
+7. Keep the change only if the selected dataset metric improves across runs without unacceptable row-level regressions. Because a single run varies by ~±2-3 rows, rerun 2-3 times or compare per-row stability before trusting a borderline change.
+8. If correctly-accepted rows flipped to rejected, strengthen the accept-protection clause and rerun within the max-iteration budget.
+9. If the metric regresses across runs, revert to the backup and either try the next focused cluster or stop and report the regression.
 
 ## Validation
 
@@ -220,26 +202,29 @@ Run focused validation:
 uv run pytest tests/unit/test_researcher.py -q
 ```
 
-Then rerun the same pinned dataset:
+Then rerun the same selected dataset:
 
 ```bash
-uv run python evaluate.py
+uv run python evaluate.py --verdict-dataset-key '<dataset-key>'
+# or: uv run python evaluate.py --verdict-dataset-ref '<dataset-ref>'
 ```
 
 ## Report Back
 
 Report:
 
-- change budget used and edit posture
+- dataset key/ref used
+- start prompt path/ref
+- baseline evaluation ID
+- max iterations requested and iterations completed
 - targeted failure cluster and deferred patterns
-- evaluation run inspected
-- dataset ref used
 - baseline `verdict_quality_scorer.is_correct`
 - number of failed rows inspected
 - failure patterns found
 - prompt changes made
+- prompt ref/hash and `ResearcherAgentModel` ref used by each rerun
 - both error directions after rerun: false accepts fixed AND any new false rejects introduced
 - backup file created
 - tests run
-- rerun `verdict_quality_scorer.is_correct`
+- rerun evaluation ID(s) and `verdict_quality_scorer.is_correct`
 - remaining failed patterns or dataset/scorer maintenance notes

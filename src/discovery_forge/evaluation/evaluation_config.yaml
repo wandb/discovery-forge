@@ -1,0 +1,13 @@
+datasets:
+  verdict_quality:
+    name: verdict_quality_dataset
+    ref: "weave:///wandb-smle/discovery-forge/object/verdict_quality_dataset:acx7n19ZeYniGNb1XNn4C8O61BcOEp4sdR7qlK7JmS8"
+  discovery_quality:
+    name: discovery_quality_dataset
+    ref: "weave:///wandb-smle/discovery-forge/object/discovery_quality_dataset:SocUuATqjKHw3zqf4dcg051MQYXznd6xpWvYeY1YW78"
+
+offline_eval_improvement:
+  dataset_key: verdict_quality
+  start_prompt: "src/discovery_forge/agents/researcher.md"
+  baseline_evaluation_id: null
+  max_iterations: 2

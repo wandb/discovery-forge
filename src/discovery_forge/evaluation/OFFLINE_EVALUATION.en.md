@@ -14,7 +14,7 @@ The evaluation datasets are managed as **versioned Weave Datasets**.
 
 - `verdict_quality_dataset`
 
-`evaluate.py` loads the pinned published refs from `evaluation/datasets.py` by default, so it evaluates the published versions with no arguments. To create a new version, re-publish reviewed rows with `publish_eval_dataset(...)` and update the refs in `datasets.py`.
+`evaluate.py` loads the pinned published refs from `evaluation/evaluation_config.yaml` by default, so it evaluates the published versions with no arguments. To create a new version, re-publish reviewed rows with `publish_eval_dataset(...)` and update the matching ref in `evaluation_config.yaml`.
 
 ## Verdict Quality Eval
 
@@ -54,9 +54,10 @@ Run:
 
 ```bash
 uv run python evaluate.py --limit 5
+uv run python evaluate.py --verdict-dataset-key verdict_quality
 ```
 
-To publish a new version, use `publish_eval_dataset(rows_path, name="verdict_quality_dataset")` and update `VERDICT_DATASET_REF` in `datasets.py`.
+To publish a new version, use `publish_eval_dataset(rows_path, name="verdict_quality_dataset")` and update the `datasets.verdict_quality.ref` value in `evaluation_config.yaml`.
 
 ## Recommended Workflow
 
