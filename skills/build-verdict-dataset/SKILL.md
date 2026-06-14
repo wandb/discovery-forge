@@ -7,7 +7,7 @@ description: Guides coding agents through building the verdict_quality_dataset f
 
 Use this skill to create or refresh `verdict_quality_dataset` from human annotations in Weave, then publish it as a versioned Weave Dataset and pin the ref.
 
-The coding agent queries annotated `research_run_<i>` calls, extracts candidate fields, maps the human verdict to a gold label, refines each row against the rubric, writes a local JSONL plus an audit report, publishes the dataset, and updates `VERDICT_DATASET_REF`.
+The coding agent queries annotated `research_run_<i>` calls, extracts candidate fields, maps the human verdict to a gold label, refines each row against the rubric, writes a local JSONL plus an audit report, publishes the dataset, and updates the pinned ref in `evaluation_config.yaml`.
 
 This skill **does not change the human annotation results themselves**. It only transforms annotation evidence into a clean eval dataset and records provenance.
 
@@ -25,7 +25,7 @@ Fetch all trace and feedback evidence live from Weave through W&B Skills. Do not
 - Annotation queue: `research_annotation`
 - Root trace unit: one `research_run_<i>` / `openai_agent_trace` call per reviewed candidate
 - Dataset name: `verdict_quality_dataset`
-- Pinned ref: `src/discovery_forge/evaluation/datasets.py` `VERDICT_DATASET_REF`
+- Pinned ref: `src/discovery_forge/evaluation/evaluation_config.yaml` `datasets.verdict_quality.ref`
 - Publish helper: `discovery_forge.evaluation.datasets.publish_eval_dataset`
 - Labeling standard: `src/discovery_forge/evaluation/verdict_dataset_rubric.md`
 - Local outputs: `src/discovery_forge/evaluation/datasets/verdict_quality_dataset_clean_<YYYY-MM-DD>.jsonl` and `verdict_quality_dataset_audit_<YYYY-MM-DD>.md`
@@ -55,7 +55,7 @@ Each dataset row must contain:
    - `Neutral` -> **ask the user how to handle it.** Do not silently auto-assign. Present each neutral candidate with its `QualityReviewer` rationale and a recommended verdict (`accepted` with `key_limitations`, `rejected`, or `drop`), then let the user decide per row or give a blanket rule. Only fall back to a provisional label + `needs_review` flag if the user explicitly defers or says to proceed without them.
 6. Refine each row against `verdict_dataset_rubric.md` (see Labeling and Hygiene). Record `keep` / `relabel` / `drop` / `needs_review` with a reason.
 7. Write the clean JSONL and the audit report.
-8. Publish the dataset and update `VERDICT_DATASET_REF`.
+8. Publish the dataset and update `datasets.verdict_quality.ref` in `src/discovery_forge/evaluation/evaluation_config.yaml`.
 9. Validate.
 
 ### Evidence Selection
@@ -115,7 +115,7 @@ print(result)
 PY
 ```
 
-Then update `VERDICT_DATASET_REF` in `src/discovery_forge/evaluation/datasets.py` to the new digest. Preserve older versions; publish a new one rather than overwriting.
+Then update `datasets.verdict_quality.ref` in `src/discovery_forge/evaluation/evaluation_config.yaml` to the new digest. Preserve older versions; publish a new one rather than overwriting.
 
 ## Validation
 
@@ -141,6 +141,6 @@ Report:
 - source scope (day / call IDs / queue) and number of annotations used
 - row count and accepted/rejected distribution
 - rows relabeled or dropped, with rubric reasons and primary sources
-- published dataset ref and the updated `VERDICT_DATASET_REF`
+- published dataset ref and the updated `evaluation_config.yaml` entry
 - validation results (tests, eval run, ref resolves)
 - rows left as `needs_review`

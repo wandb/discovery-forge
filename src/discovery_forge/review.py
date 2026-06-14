@@ -16,6 +16,7 @@ def profile_review_output(
     workflow_name: str | None = None,
     researcher_prompt_ref: str | None = None,
     researcher_prompt_hash: str | None = None,
+    researcher_model_ref: str | None = None,
 ) -> dict[str, Any]:
     """Return Annotation Queue-friendly research output fields."""
     primary_url = (
@@ -51,6 +52,7 @@ def profile_review_output(
             "workflow_name": workflow_name,
             "researcher_prompt_ref": researcher_prompt_ref,
             "researcher_prompt_hash": researcher_prompt_hash,
+            "researcher_model_ref": researcher_model_ref,
         },
     }
 

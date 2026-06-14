@@ -82,7 +82,8 @@ uv run python main.py --day 2026-05-19 [--max-tools N --max-cost-usd N --dry-run
 # read and follow skills/offline-eval-improvement/SKILL.md
 
 # Run offline evaluation against the published Weave dataset
-uv run python evaluate.py --verdict-dataset-ref '<verdict-dataset-ref>'
+uv run python evaluate.py --verdict-dataset-key verdict_quality
+# or override with: uv run python evaluate.py --verdict-dataset-ref '<verdict-dataset-ref>'
 ```
 
 ---
@@ -105,7 +106,8 @@ src/discovery_forge/
 ├── evaluation/             # offline evaluation runners, scorers, dataset helpers + docs
 │   ├── __init__.py
 │   ├── verdict.py          # verdict quality eval (run_researcher_evaluation, scorers)
-│   ├── datasets.py         # load/publish helpers + dataset name/ref constants
+│   ├── datasets.py         # load/publish helpers + YAML evaluation config loader
+│   ├── evaluation_config.yaml  # dataset refs + offline-eval improvement defaults
 │   └── OFFLINE_EVALUATION.{ko,ja,en}.md  # eval workflow docs (datasets live in Weave)
 ├── tools/                  # function_tool definitions + helpers
 │   ├── __init__.py

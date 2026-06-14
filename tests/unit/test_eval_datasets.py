@@ -2,6 +2,39 @@ import json
 from unittest.mock import patch
 
 
+def test_get_eval_dataset_ref_reads_yaml_config(tmp_path):
+    from discovery_forge.evaluation.datasets import get_eval_dataset_ref
+
+    config_path = tmp_path / "evaluation_config.yaml"
+    config_path.write_text(
+        "\n".join([
+            "datasets:",
+            "  verdict_quality:",
+            "    name: verdict_quality_dataset",
+            "    ref: weave:///entity/project/object/verdict_quality_dataset:v1",
+            "",
+        ])
+    )
+
+    ref = get_eval_dataset_ref("verdict_quality", config_path=config_path)
+
+    assert ref == "weave:///entity/project/object/verdict_quality_dataset:v1"
+
+
+def test_get_eval_dataset_ref_requires_configured_dataset(tmp_path):
+    from discovery_forge.evaluation.datasets import get_eval_dataset_ref
+
+    config_path = tmp_path / "evaluation_config.yaml"
+    config_path.write_text("datasets: {}\n")
+
+    try:
+        get_eval_dataset_ref("missing_dataset", config_path=config_path)
+    except KeyError as exc:
+        assert "missing_dataset" in str(exc)
+    else:
+        raise AssertionError("Expected missing dataset key to raise KeyError")
+
+
 def test_load_jsonl_rows_reads_eval_dataset(tmp_path):
     from discovery_forge.evaluation.datasets import load_jsonl_rows
 
@@ -67,6 +100,35 @@ def test_evaluate_entrypoint_runs_verdict_ref(tmp_path, monkeypatch):
         dataset_ref="weave:///verdict:v1",
         output_dir=tmp_path / "eval_runs" / "verdict",
         search_backend="serper",
+        recency="month",
+        max_turns=40,
         limit=1,
+        researcher_prompt_ref=None,
+    )
+
+
+def test_evaluate_entrypoint_resolves_configured_dataset_key(tmp_path, monkeypatch):
+    import evaluate
+
+    monkeypatch.setattr("sys.argv", [
+        "evaluate.py",
+        "--verdict-dataset-key",
+        "verdict_quality",
+        "--output-dir",
+        str(tmp_path / "eval_runs"),
+    ])
+    with patch.object(evaluate, "init_observability"), \
+        patch.object(evaluate, "get_eval_dataset_ref", return_value="weave:///verdict:v2") as get_ref, \
+        patch.object(evaluate, "run_researcher_evaluation", return_value={"verdict": True}) as verdict_eval:
+        evaluate.main()
+
+    get_ref.assert_called_once_with("verdict_quality")
+    verdict_eval.assert_called_once_with(
+        dataset_ref="weave:///verdict:v2",
+        output_dir=tmp_path / "eval_runs" / "verdict",
+        search_backend="serper",
+        recency="month",
+        max_turns=40,
+        limit=None,
         researcher_prompt_ref=None,
     )

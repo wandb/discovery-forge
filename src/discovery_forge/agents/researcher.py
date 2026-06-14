@@ -93,6 +93,10 @@ def build_researcher_agent(
     save_tool_profile_callback: Any = None,
     save_rejected_profile_callback: Any = None,
     report_no_new_tool_callback: Any = None,
+    search_query_observer: Any = None,
+    save_tool_profile_observer: Any = None,
+    save_rejected_profile_observer: Any = None,
+    report_no_new_tool_observer: Any = None,
 ) -> Agent:
     """Build and return the single ResearcherAgent.
 
@@ -111,6 +115,10 @@ def build_researcher_agent(
             save_tool_profile_callback=save_tool_profile_callback,
             save_rejected_profile_callback=save_rejected_profile_callback,
             report_no_new_tool_callback=report_no_new_tool_callback,
+            search_query_observer=search_query_observer,
+            save_tool_profile_observer=save_tool_profile_observer,
+            save_rejected_profile_observer=save_rejected_profile_observer,
+            report_no_new_tool_observer=report_no_new_tool_observer,
         )
     )
 

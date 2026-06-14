@@ -4,118 +4,57 @@ from __future__ import annotations
 
 import asyncio
 import json
-import tempfile
 from pathlib import Path
 from typing import Any
 
 import weave
-from agents import Runner
 
-from discovery_forge.agents.researcher import build_researcher_agent
-from discovery_forge.schemas.tool_profile import RejectedProfile, ToolProfile
-from discovery_forge.tools.prompts import load_prompt_ref_content
-from discovery_forge.tools.search import DEFAULT_SEARCH_BACKEND, SearchBackend
+from discovery_forge.agents.researcher_model import (
+    DEFAULT_RESEARCHER_MAX_TURNS,
+    EvalPersistenceRecorder,
+    ResearcherAgentModel,
+    publish_researcher_model,
+)
+from discovery_forge.tools.prompts import (
+    InstructionPromptVersion,
+    prompt_contents,
+    resolve_instruction_prompts,
+)
+from discovery_forge.tools.search import DEFAULT_SEARCH_BACKEND, RecencyWindow, SearchBackend
 
 
 class VerdictQualityEvaluation(weave.Evaluation):
     """Named Weave Evaluation object for verdict quality runs."""
 
     researcher_prompt_ref: str | None = None
-
-
-class _EvalPersistenceRecorder:
-    """Capture this eval row's final persistence tool result in memory."""
-
-    def __init__(self) -> None:
-        self.events: list[tuple[str, Any]] = []
-
-    def save_tool_profile(self, profile: ToolProfile) -> str:
-        self.events.append(("accepted", profile))
-        return f"Saved profile: {profile.slug}"
-
-    def save_rejected_profile(self, rejected: RejectedProfile) -> str:
-        self.events.append(("rejected", rejected))
-        primary_url = rejected.github_url or rejected.project_url or rejected.paper_url or rejected.url or "unknown"
-        return f"Rejected: {rejected.name} ({primary_url}) - {rejected.verdict_reason}"
-
-    def report_no_new_tool(self, reason: str) -> str:
-        self.events.append(("unknown", reason))
-        return f"No new tool found: {reason}"
-
-    def output(self) -> dict[str, Any]:
-        if not self.events:
-            return {
-                "scope_status": "unknown",
-                "verdict_reason": "ResearcherAgent did not save or reject a profile.",
-                "profile": None,
-            }
-
-        status, payload = self.events[-1]
-        if status == "accepted":
-            return {
-                "scope_status": "accepted",
-                "verdict_reason": None,
-                "profile": payload.model_dump(),
-            }
-        if status == "rejected":
-            return {
-                "scope_status": "rejected",
-                "verdict_reason": payload.verdict_reason,
-                "profile": None,
-            }
-        return {
-            "scope_status": "unknown",
-            "verdict_reason": str(payload),
-            "profile": None,
-        }
+    researcher_prompt_hash: str | None = None
+    researcher_model_ref: str | None = None
 
 
 def make_researcher_eval_predict_fn(
     *,
     output_dir: Path,
     search_backend: SearchBackend = DEFAULT_SEARCH_BACKEND,
+    recency: RecencyWindow | None = "month",
+    max_turns: int = DEFAULT_RESEARCHER_MAX_TURNS,
     researcher_prompt_ref: str | None = None,
 ):
-    """Create the researcher evaluation predict op without publishing a Weave Model."""
-    instructions_override = (
-        load_prompt_ref_content(researcher_prompt_ref)
-        if researcher_prompt_ref is not None
-        else None
+    """Create a backwards-compatible eval predict callable backed by the Weave Model."""
+    prompt_versions = resolve_instruction_prompts(
+        max_tools=1,
+        researcher_prompt_ref=researcher_prompt_ref,
+        publish_local=False,
     )
+    model = _build_eval_model(
+        output_dir=output_dir,
+        search_backend=search_backend,
+        recency=recency,
+        max_turns=max_turns,
+        prompt_version=prompt_versions["researcher"],
+    )
+    return model.predict
 
-    @weave.op(name="researcher_eval_predict")
-    async def predict(
-        input_tool_name: str,
-        input_candidate_url: str,
-        input_candidate_description: str,
-        **_: Any,
-    ) -> dict[str, Any]:
-        row_dir = output_dir / _safe_name(input_tool_name)
-        recorder = _EvalPersistenceRecorder()
-        prompt = (
-            "Profile this specific tool candidate and determine if it is in scope:\n"
-            f"Name: {input_tool_name}\n"
-            f"URL: {input_candidate_url}\n"
-            f"Description: {input_candidate_description}\n"
-            "If in scope, save sources then call save_tool_profile_tool. "
-            "If out of scope, call save_rejected_profile_tool with a clear reason."
-        )
-        agent = build_researcher_agent(
-            output_dir=row_dir,
-            search_backend=search_backend,
-            instructions_override=instructions_override,
-            save_tool_profile_callback=recorder.save_tool_profile,
-            save_rejected_profile_callback=recorder.save_rejected_profile,
-            report_no_new_tool_callback=recorder.report_no_new_tool,
-        )
-        result = await Runner.run(agent, input=prompt, max_turns=15)
-        return {
-            **recorder.output(),
-            "researcher_prompt_ref": researcher_prompt_ref,
-            "final_output": str(getattr(result, "final_output", "")),
-        }
-
-    return predict
+_EvalPersistenceRecorder = EvalPersistenceRecorder
 
 
 @weave.op()
@@ -124,7 +63,7 @@ def verdict_quality_scorer(
     expected_scope_status: str,
 ) -> dict[str, Any]:
     """Score whether the agent accepted/rejected the candidate correctly."""
-    observed = output.get("scope_status")
+    observed = _observed_scope_status(output)
     return {
         "is_correct": observed == expected_scope_status,
         "expected": expected_scope_status,
@@ -139,7 +78,7 @@ def profile_quality_scorer(
     expected_issue_category: str | None = None,
 ) -> dict[str, Any]:
     """Score basic profile/rejection quality."""
-    observed = output.get("scope_status")
+    observed = _observed_scope_status(output)
     if observed != expected_scope_status:
         return {
             "passed": False,
@@ -194,6 +133,8 @@ def run_researcher_evaluation(
     dataset_ref: str | None = None,
     output_dir: Path,
     search_backend: SearchBackend = DEFAULT_SEARCH_BACKEND,
+    recency: RecencyWindow | None = "month",
+    max_turns: int = DEFAULT_RESEARCHER_MAX_TURNS,
     evaluation_name: str = "Verdict Quality Eval",
     limit: int | None = None,
     researcher_prompt_ref: str | None = None,
@@ -211,18 +152,69 @@ def run_researcher_evaluation(
     else:
         eval_dataset = dataset
     output_dir.mkdir(parents=True, exist_ok=True)
-    predict = make_researcher_eval_predict_fn(
+    prompt_versions = resolve_instruction_prompts(
+        max_tools=limit or 1,
+        researcher_prompt_ref=researcher_prompt_ref,
+        publish_local=True,
+    )
+    prompt_version = prompt_versions["researcher"]
+    model = _build_eval_model(
         output_dir=output_dir,
         search_backend=search_backend,
-        researcher_prompt_ref=researcher_prompt_ref,
+        recency=recency,
+        max_turns=max_turns,
+        prompt_version=prompt_version,
     )
+    researcher_model_ref = publish_researcher_model(model)
     evaluation = VerdictQualityEvaluation(
         dataset=eval_dataset,
         scorers=[verdict_quality_scorer],
+        preprocess_model_input=preprocess_verdict_model_input,
         evaluation_name=evaluation_name,
-        researcher_prompt_ref=researcher_prompt_ref,
+        researcher_prompt_ref=prompt_version.ref_uri,
+        researcher_prompt_hash=prompt_version.content_hash,
+        researcher_model_ref=researcher_model_ref,
+        metadata={
+            "researcher_prompt_ref": prompt_version.ref_uri,
+            "researcher_prompt_hash": prompt_version.content_hash,
+            "researcher_model_ref": researcher_model_ref,
+            "search_backend": search_backend,
+            "recency": recency,
+            "max_turns": max_turns,
+        },
     )
-    return asyncio.run(evaluation.evaluate(predict))
+    return asyncio.run(evaluation.evaluate(model))
+
+
+def preprocess_verdict_model_input(row: dict[str, Any]) -> dict[str, Any]:
+    """Expose only candidate inputs to the model, keeping labels for scorers."""
+    return {
+        "input_tool_name": row["input_tool_name"],
+        "input_candidate_url": row["input_candidate_url"],
+        "input_candidate_description": row["input_candidate_description"],
+    }
+
+
+def _build_eval_model(
+    *,
+    output_dir: Path,
+    search_backend: SearchBackend,
+    recency: RecencyWindow | None,
+    max_turns: int,
+    prompt_version: InstructionPromptVersion,
+) -> ResearcherAgentModel:
+    return ResearcherAgentModel(
+        search_backend=search_backend,
+        recency=recency,
+        max_turns=max_turns,
+        prompt_object_name=prompt_version.object_name,
+        researcher_prompt_ref=prompt_version.ref_uri,
+        researcher_prompt_hash=prompt_version.content_hash,
+    ).bind_runtime(
+        output_dir=output_dir,
+        instructions_override=prompt_contents({"researcher": prompt_version})["researcher"],
+        capture_persistence=True,
+    )
 
 
 def _load_evaluation_dataset(
@@ -247,11 +239,8 @@ def _dataset_rows(dataset: Any) -> list[dict[str, Any]]:
     return [dict(row) for row in dataset.rows]
 
 
-def _safe_name(value: str) -> str:
-    import re
-
-    slug = re.sub(r"[^a-zA-Z0-9_.-]+", "-", value).strip("-").lower()
-    return slug or next(tempfile._get_candidate_names())
+def _observed_scope_status(output: dict[str, Any]) -> Any:
+    return output.get("scope_status") or output.get("verdict")
 
 
 def _is_missing_profile_value(value: Any) -> bool:
