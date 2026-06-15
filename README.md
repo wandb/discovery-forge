@@ -228,19 +228,20 @@ loop only edits the prompt. The Dojo `improve-from-annotations` and
 ### Offline evaluation
 
 The eval dataset is published to Weave as `verdict_quality_dataset`; `evaluate.py`
-loads the pinned ref from `src/discovery_forge/evaluation/datasets.py`:
+loads the pinned ref from `src/discovery_forge/evaluation/evaluation_config.yaml`:
 
 ```bash
-uv run python evaluate.py                          # pinned dataset
-uv run python evaluate.py --verdict-dataset-ref '<ref>'   # override
+uv run python evaluate.py                                  # evaluation_config.yaml verdict_quality
+uv run python evaluate.py --verdict-dataset-key verdict_quality
+uv run python evaluate.py --verdict-dataset-ref '<ref>'    # override
 ```
 
 To publish a new dataset version, use
-`discovery_forge.evaluation.datasets.publish_eval_dataset` and update the pinned
-ref. To improve the prompt from failed eval rows, follow
-`skills/offline-eval-improvement/SKILL.md` (same prompt-only loop, driven by
-failed `verdict_quality_scorer` cases). See the Dojo `build-eval-dataset` chapter
-for dataset design.
+`discovery_forge.evaluation.datasets.publish_eval_dataset` and update the
+matching ref in `evaluation_config.yaml`. To improve the prompt from failed eval
+rows, follow `skills/offline-eval-improvement/SKILL.md` with the dataset, start
+prompt, baseline evaluation ID, and max iteration count from the same config.
+See the Dojo `build-eval-dataset` chapter for dataset design.
 
 ### Prompt versioning
 

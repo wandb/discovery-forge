@@ -15,7 +15,7 @@ from typing import Any
 from uuid import uuid4
 
 import weave
-from agents import RunConfig, Runner, gen_trace_id
+from agents import RunConfig, gen_trace_id
 
 from discovery_forge.observability import get_agent_trace_call_metadata
 from discovery_forge.review import name_to_slug
@@ -67,6 +67,7 @@ def ensure_run_metadata(
     prompt_hashes: dict[str, str],
     search_backend: str,
     prompt_refs: dict[str, str | None] | None = None,
+    model_refs: dict[str, str | None] | None = None,
 ) -> None:
     """Merge run identity and prompt versions into run_metadata.json."""
     data: dict[str, Any] = {}
@@ -77,6 +78,10 @@ def ensure_run_metadata(
     data["prompt_hashes"] = prompt_hashes
     if prompt_refs is not None:
         data["prompt_refs"] = prompt_refs
+        data["researcher_prompt_ref"] = prompt_refs.get("researcher")
+    if model_refs is not None:
+        data["model_refs"] = model_refs
+        data["researcher_model_ref"] = model_refs.get("researcher")
     data["search_backend"] = search_backend
     metadata_path.parent.mkdir(parents=True, exist_ok=True)
     metadata_path.write_text(json.dumps(data, indent=2))
@@ -327,33 +332,47 @@ async def run_briefing(
     Respects max_cost_usd; preserves partial outputs on budget exceeded.
     Weave tracing must be initialized before calling this (init_observability).
     """
-    from discovery_forge.agents.researcher import build_researcher_agent
+    from discovery_forge.agents.researcher_model import (
+        DEFAULT_RESEARCHER_MAX_TURNS,
+        ResearcherAgentModel,
+        publish_researcher_model,
+    )
     from discovery_forge.tools.feed import build_feed_output
     from discovery_forge.tools.prompts import (
-        load_local_instruction_prompts,
         prompt_contents,
         prompt_hashes,
         prompt_refs,
-        publish_instruction_prompts,
+        resolve_instruction_prompts,
     )
     from discovery_forge.tools.registry import ToolRegistry
 
     metadata_path = output_dir / "run_metadata.json"
     run_id = create_run_id(day)
-    prompt_versions = (
-        load_local_instruction_prompts(max_tools=max_tools)
-        if dry_run
-        else publish_instruction_prompts(max_tools=max_tools)
+    prompt_versions = resolve_instruction_prompts(
+        max_tools=max_tools,
+        publish_local=not dry_run,
     )
     prompt_hash_map = prompt_hashes(prompt_versions)
     prompt_ref_map = prompt_refs(prompt_versions)
     prompt_content_map = prompt_contents(prompt_versions)
+    researcher_model = ResearcherAgentModel(
+        search_backend=search_backend,
+        recency=recency,
+        max_turns=DEFAULT_RESEARCHER_MAX_TURNS,
+        prompt_object_name=prompt_versions["researcher"].object_name,
+        researcher_prompt_ref=prompt_ref_map["researcher"],
+        researcher_prompt_hash=prompt_hash_map["researcher"],
+    )
+    model_ref_map = {
+        "researcher": None if dry_run else publish_researcher_model(researcher_model),
+    }
     ensure_run_metadata(
         metadata_path,
         day=day,
         run_id=run_id,
         prompt_hashes=prompt_hash_map,
         prompt_refs=prompt_ref_map,
+        model_refs=model_ref_map,
         search_backend=search_backend,
     )
 
@@ -370,6 +389,12 @@ async def run_briefing(
     registry_dir = output_dir.parent / "_registry"
     registry = ToolRegistry.load(registry_dir)
     print(f"[orchestrator] Registry loaded: {len(registry.get_all_entries())} known tools")
+    researcher_model.bind_runtime(
+        output_dir=output_dir,
+        registry=registry,
+        day=day,
+        instructions_override=prompt_content_map["researcher"],
+    )
 
     if dry_run:
         _write_dry_run_outputs(
@@ -411,15 +436,6 @@ async def run_briefing(
                 recency=recency,
             )
 
-            agent = build_researcher_agent(
-                output_dir=output_dir,
-                registry=registry,
-                day=day,
-                search_backend=search_backend,
-                recency=recency,
-                instructions_override=prompt_content_map["researcher"],
-            )
-
             outcome: dict[str, Any] = {"status": "unknown", "stop": False}
             usage = (0, 0, 0.0)
             trace_id: str | None = None
@@ -446,31 +462,29 @@ async def run_briefing(
                     "attempt": attempt + 1,
                     "researcher_prompt_hash": prompt_hash_map["researcher"],
                     "researcher_prompt_ref": prompt_ref_map["researcher"],
+                    "researcher_model_ref": model_ref_map["researcher"],
                     "search_backend": search_backend,
                 }):
-                    result = await Runner.run(
-                        agent,
-                        input=research_prompt,
-                        max_turns=40,
-                        run_config=stage_run_config(
-                            workflow_name=workflow_name,
-                            day=day,
-                            run_id=run_id,
-                            stage="research",
-                            trace_id=trace_id,
-                            metadata={
-                                "iteration": i + 1,
-                                "attempt": attempt + 1,
-                                "workflow_name": workflow_name,
-                                "researcher_prompt_hash": prompt_hash_map["researcher"],
-                                "researcher_prompt_ref": prompt_ref_map["researcher"],
-                                "search_backend": search_backend,
-                                "recency": recency,
-                            },
-                        ),
+                    await researcher_model.predict(
+                        research_prompt=research_prompt,
+                        day=day,
+                        run_id=run_id,
+                        workflow_name=workflow_name,
+                        trace_id=trace_id,
+                        stage="research",
+                        metadata={
+                            "iteration": i + 1,
+                            "attempt": attempt + 1,
+                            "workflow_name": workflow_name,
+                            "researcher_prompt_hash": prompt_hash_map["researcher"],
+                            "researcher_prompt_ref": prompt_ref_map["researcher"],
+                            "researcher_model_ref": model_ref_map["researcher"],
+                            "search_backend": search_backend,
+                            "recency": recency,
+                        },
                     )
 
-                usage = _extract_usage(result)
+                usage = researcher_model.last_usage
                 prompt_tokens += usage[0]
                 completion_tokens += usage[1]
                 total_cost += usage[2]
@@ -526,6 +540,7 @@ async def run_briefing(
                     "trace_url": trace_url,
                     "researcher_prompt_hash": prompt_hash_map["researcher"],
                     "researcher_prompt_ref": prompt_ref_map["researcher"],
+                    "researcher_model_ref": model_ref_map["researcher"],
                     "search_backend": search_backend,
                     "prompt_tokens": usage[0],
                     "completion_tokens": usage[1],
@@ -568,6 +583,14 @@ async def run_briefing(
 
 def _extract_usage(result) -> tuple[int, int, float]:
     """Extract (prompt_tokens, completion_tokens, cost_usd) from a Runner result."""
+    if isinstance(result, dict):
+        usage = result.get("usage")
+        if isinstance(usage, dict):
+            return (
+                int(usage.get("prompt_tokens") or 0),
+                int(usage.get("completion_tokens") or 0),
+                float(usage.get("cost_usd") or 0.0),
+            )
     try:
         usage = result.raw_responses[-1].usage
         p = getattr(usage, "input_tokens", 0) or getattr(usage, "prompt_tokens", 0)

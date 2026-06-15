@@ -14,7 +14,7 @@
 
 - `verdict_quality_dataset`
 
-`evaluate.py` は `evaluation/datasets.py` に固定された published ref をデフォルトで読み込むため、引数なしでも published バージョンで評価が走る。新しいバージョンを作るには reviewed rows を `publish_eval_dataset(...)` で再 publish し、`datasets.py` の ref を更新する。
+`evaluate.py` は `evaluation/evaluation_config.yaml` に固定された published ref をデフォルトで読み込むため、引数なしでも published バージョンで評価が走る。新しいバージョンを作るには reviewed rows を `publish_eval_dataset(...)` で再 publish し、`evaluation_config.yaml` の該当 ref を更新する。
 
 ## Verdict Quality Eval
 
@@ -54,9 +54,10 @@ Scorer の解釈:
 
 ```bash
 uv run python evaluate.py --limit 5
+uv run python evaluate.py --verdict-dataset-key verdict_quality
 ```
 
-新しいバージョンの publish は `publish_eval_dataset(rows_path, name="verdict_quality_dataset")` で行い、`datasets.py` の `VERDICT_DATASET_REF` を更新する。
+新しいバージョンの publish は `publish_eval_dataset(rows_path, name="verdict_quality_dataset")` で行い、`evaluation_config.yaml` の `datasets.verdict_quality.ref` 値を更新する。
 
 ## Recommended Workflow
 
