@@ -338,14 +338,11 @@ def test_run_researcher_evaluation_uses_local_rows_and_model(tmp_path):
             captured["dataset"] = dataset
             captured["scorers"] = scorers
             captured["evaluation_name"] = evaluation_name
-            captured["researcher_prompt_ref"] = kwargs["researcher_prompt_ref"]
-            captured["researcher_prompt_hash"] = kwargs["researcher_prompt_hash"]
-            captured["researcher_model_ref"] = kwargs["researcher_model_ref"]
-            captured["preprocess_model_input"] = kwargs["preprocess_model_input"]
+            captured["kwargs"] = kwargs
             captured["metadata"] = kwargs["metadata"]
 
-        async def evaluate(self, model):
-            captured["model"] = model
+        async def evaluate(self, predict_op):
+            captured["predict_op"] = predict_op
             return {"ok": True}
 
     with patch.object(evaluation_module.weave, "Dataset") as dataset_cls, \
@@ -359,27 +356,21 @@ def test_run_researcher_evaluation_uses_local_rows_and_model(tmp_path):
 
     dataset_cls.assert_not_called()
     resolve_prompts.assert_called_once_with(max_tools=1, researcher_prompt_ref=None, publish_local=True)
-    publish_model.assert_called_once_with(captured["model"])
     assert result == {"ok": True}
+    published_model = publish_model.call_args.args[0]
+    assert published_model.researcher_prompt_ref == "weave:///prompt:v1"
     assert isinstance(captured["dataset"], list)
     assert captured["dataset"][0]["input_tool_name"] == "Tool A"
     assert [scorer.__name__ for scorer in captured["scorers"]] == ["verdict_quality_scorer"]
     assert captured["evaluation_name"] == "Verdict Quality Eval"
-    assert captured["researcher_prompt_ref"] == "weave:///prompt:v1"
-    assert captured["researcher_prompt_hash"] == "hash123"
-    assert captured["researcher_model_ref"] == "weave:///model:v1"
-    assert captured["metadata"]["researcher_model_ref"] == "weave:///model:v1"
-    assert captured["model"].researcher_prompt_ref == "weave:///prompt:v1"
-    assert captured["preprocess_model_input"]({
-        "input_tool_name": "Tool A",
-        "input_candidate_url": "https://example.com/tool-a",
-        "input_candidate_description": "Runs experiments.",
-        "expected_scope_status": "accepted",
-    }) == {
-        "input_tool_name": "Tool A",
-        "input_candidate_url": "https://example.com/tool-a",
-        "input_candidate_description": "Runs experiments.",
-    }
+    assert "preprocess_model_input" not in captured["kwargs"]
+    assert "researcher_prompt_ref" not in captured["kwargs"]
+    assert "researcher_prompt_hash" not in captured["kwargs"]
+    assert "researcher_model_ref" not in captured["kwargs"]
+    assert "researcher_prompt_ref" not in captured["metadata"]
+    assert "researcher_prompt_hash" not in captured["metadata"]
+    assert "researcher_model_ref" not in captured["metadata"]
+    assert captured["predict_op"] is evaluation_module.predict_researcher_eval_row
 
 
 def test_run_researcher_evaluation_reuses_dataset_ref_object(tmp_path):
@@ -404,7 +395,7 @@ def test_run_researcher_evaluation_reuses_dataset_ref_object(tmp_path):
     class FakeEvaluation:
         def __init__(self, **kwargs):
             captured["dataset"] = kwargs["dataset"]
-            captured["researcher_prompt_ref"] = kwargs["researcher_prompt_ref"]
+            captured["kwargs"] = kwargs
 
         async def evaluate(self, model):
             return {"ok": True}

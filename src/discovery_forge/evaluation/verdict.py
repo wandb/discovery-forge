@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from contextvars import ContextVar
 from pathlib import Path
 from typing import Any
 
@@ -25,10 +26,6 @@ from discovery_forge.tools.search import DEFAULT_SEARCH_BACKEND, RecencyWindow, 
 
 class VerdictQualityEvaluation(weave.Evaluation):
     """Named Weave Evaluation object for verdict quality runs."""
-
-    researcher_prompt_ref: str | None = None
-    researcher_prompt_hash: str | None = None
-    researcher_model_ref: str | None = None
 
 
 def make_researcher_eval_predict_fn(
@@ -55,6 +52,28 @@ def make_researcher_eval_predict_fn(
     return model.predict
 
 _EvalPersistenceRecorder = EvalPersistenceRecorder
+
+_ACTIVE_RESEARCHER_EVAL_MODEL: ContextVar[ResearcherAgentModel | None] = ContextVar(
+    "_ACTIVE_RESEARCHER_EVAL_MODEL",
+    default=None,
+)
+
+
+@weave.op()
+async def predict_researcher_eval_row(
+    input_tool_name: str | None = None,
+    input_candidate_url: str | None = None,
+    input_candidate_description: str | None = None,
+) -> dict[str, Any]:
+    """Stable eval predict op that delegates to the runtime-bound researcher model."""
+    model = _ACTIVE_RESEARCHER_EVAL_MODEL.get()
+    if model is None:
+        raise RuntimeError("No active ResearcherAgentModel is bound for evaluation.")
+    return await model.predict(
+        input_tool_name=input_tool_name,
+        input_candidate_url=input_candidate_url,
+        input_candidate_description=input_candidate_description,
+    )
 
 
 @weave.op()
@@ -165,25 +184,22 @@ def run_researcher_evaluation(
         max_turns=max_turns,
         prompt_version=prompt_version,
     )
-    researcher_model_ref = publish_researcher_model(model)
+    publish_researcher_model(model)
     evaluation = VerdictQualityEvaluation(
         dataset=eval_dataset,
         scorers=[verdict_quality_scorer],
-        preprocess_model_input=preprocess_verdict_model_input,
         evaluation_name=evaluation_name,
-        researcher_prompt_ref=prompt_version.ref_uri,
-        researcher_prompt_hash=prompt_version.content_hash,
-        researcher_model_ref=researcher_model_ref,
         metadata={
-            "researcher_prompt_ref": prompt_version.ref_uri,
-            "researcher_prompt_hash": prompt_version.content_hash,
-            "researcher_model_ref": researcher_model_ref,
             "search_backend": search_backend,
             "recency": recency,
             "max_turns": max_turns,
         },
     )
-    return asyncio.run(evaluation.evaluate(model))
+    token = _ACTIVE_RESEARCHER_EVAL_MODEL.set(model)
+    try:
+        return asyncio.run(evaluation.evaluate(predict_researcher_eval_row))
+    finally:
+        _ACTIVE_RESEARCHER_EVAL_MODEL.reset(token)
 
 
 def preprocess_verdict_model_input(row: dict[str, Any]) -> dict[str, Any]:
