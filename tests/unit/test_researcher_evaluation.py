@@ -283,11 +283,14 @@ def test_run_researcher_evaluation_uses_local_rows_without_publishing_dataset(tm
     captured = {}
 
     class FakeEvaluation:
-        def __init__(self, *, dataset, scorers, evaluation_name, researcher_prompt_ref=None):
+        def __init__(self, **kwargs):
+            dataset = kwargs["dataset"]
+            scorers = kwargs["scorers"]
+            evaluation_name = kwargs["evaluation_name"]
             captured["dataset"] = dataset
             captured["scorers"] = scorers
             captured["evaluation_name"] = evaluation_name
-            captured["researcher_prompt_ref"] = researcher_prompt_ref
+            captured["kwargs"] = kwargs
 
         async def evaluate(self, model):
             captured["model"] = model
@@ -309,7 +312,7 @@ def test_run_researcher_evaluation_uses_local_rows_without_publishing_dataset(tm
     assert captured["dataset"][0]["input_tool_name"] == "Tool A"
     assert [scorer.__name__ for scorer in captured["scorers"]] == ["verdict_quality_scorer"]
     assert captured["evaluation_name"] == "Verdict Quality Eval"
-    assert captured["researcher_prompt_ref"] == "weave:///prompt:v1"
+    assert "researcher_prompt_ref" not in captured["kwargs"]
     assert callable(captured["model"])
 
 
@@ -324,9 +327,9 @@ def test_run_researcher_evaluation_reuses_dataset_ref_object(tmp_path):
             return fake_dataset
 
     class FakeEvaluation:
-        def __init__(self, *, dataset, scorers, evaluation_name, researcher_prompt_ref=None):
-            captured["dataset"] = dataset
-            captured["researcher_prompt_ref"] = researcher_prompt_ref
+        def __init__(self, **kwargs):
+            captured["dataset"] = kwargs["dataset"]
+            captured["kwargs"] = kwargs
 
         async def evaluate(self, model):
             return {"ok": True}
@@ -346,6 +349,7 @@ def test_run_researcher_evaluation_reuses_dataset_ref_object(tmp_path):
     # Evaluation stays linked to the published dataset instead of creating an
     # anonymous `Dataset` object.
     assert captured["dataset"] is fake_dataset
+    assert "researcher_prompt_ref" not in captured["kwargs"]
 
 
 def test_run_researcher_evaluation_ref_with_limit_uses_rows(tmp_path):
@@ -363,8 +367,9 @@ def test_run_researcher_evaluation_ref_with_limit_uses_rows(tmp_path):
             return fake_dataset
 
     class FakeEvaluation:
-        def __init__(self, *, dataset, scorers, evaluation_name, researcher_prompt_ref=None):
-            captured["dataset"] = dataset
+        def __init__(self, **kwargs):
+            captured["dataset"] = kwargs["dataset"]
+            captured["kwargs"] = kwargs
 
         async def evaluate(self, model):
             return {"ok": True}
@@ -383,3 +388,4 @@ def test_run_researcher_evaluation_ref_with_limit_uses_rows(tmp_path):
     # With a limit, rows are sliced into a list (the version link is not needed
     # for a truncated debug run).
     assert captured["dataset"] == [{"input_tool_name": "Tool A"}]
+    assert "researcher_prompt_ref" not in captured["kwargs"]

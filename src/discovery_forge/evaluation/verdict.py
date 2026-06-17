@@ -20,8 +20,6 @@ from discovery_forge.tools.search import DEFAULT_SEARCH_BACKEND, SearchBackend
 class VerdictQualityEvaluation(weave.Evaluation):
     """Named Weave Evaluation object for verdict quality runs."""
 
-    researcher_prompt_ref: str | None = None
-
 
 class _EvalPersistenceRecorder:
     """Capture this eval row's final persistence tool result in memory."""
@@ -220,7 +218,6 @@ def run_researcher_evaluation(
         dataset=eval_dataset,
         scorers=[verdict_quality_scorer],
         evaluation_name=evaluation_name,
-        researcher_prompt_ref=researcher_prompt_ref,
     )
     return asyncio.run(evaluation.evaluate(predict))
 
